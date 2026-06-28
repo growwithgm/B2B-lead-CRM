@@ -1,14 +1,23 @@
-// Generic, ENV-CONFIGURABLE WhatsApp send adapter.
+// WhatsApp send adapter — routes through the wasify app so all threads/logs
+// live there. Calls wasify's machine-callable outbound endpoint:
 //
-// The real provider spec was not known at build time, so the request shape is
-// driven by env vars + sensible defaults. When you plug in your own WhatsApp
-// app, set the env vars below and (if needed) tweak the request body in the
-// clearly marked "adjust to match your provider" block inside sendWhatsAppMessage.
+//   POST {WHATSAPP_API_BASE_URL}/api/outbound/send
+//   Authorization: Bearer {WHATSAPP_API_TOKEN}
+//   { "to": "+34600000000", "message": "..." }
+//        or { "to": "...", "template": "name", "variables": [...], "language": "es" }
+//   → 200 { ok: true, whatsapp_message_id, conversation_id, contact_id }
 //
-// Env vars (server-side only — never expose these to the browser):
-//   WHATSAPP_API_BASE_URL  POST endpoint, e.g. https://api.example.com/v1/messages
-//   WHATSAPP_API_TOKEN     bearer token
-//   WHATSAPP_SENDER        sender id / from number
+// SERVER-SIDE ONLY — never import this into a client component (it reads the
+// bearer token from the environment).
+//
+// Env vars (server-side only):
+//   WHATSAPP_API_BASE_URL  wasify origin, e.g. https://wasify-one.vercel.app
+//   WHATSAPP_API_TOKEN     the WACRM_API_TOKEN bearer configured in wasify
+//   WHATSAPP_SENDER        optional; unused by wasify (it resolves the sender
+//                          from its own WhatsApp config) — kept for parity.
+//
+// When the env vars are unset the adapter reports a graceful "not configured"
+// result (status 0) instead of throwing, so the UI can show a hint.
 
 export interface SendWhatsAppResult {
   ok: boolean;
@@ -18,27 +27,31 @@ export interface SendWhatsAppResult {
   raw?: unknown;
 }
 
-// Pull a provider message id out of a parsed JSON response, checking the
-// field names commonly used across WhatsApp/SMS providers.
+export interface SendWhatsAppArgs {
+  to: string;
+  // Free-text message (24h window) …
+  message?: string;
+  // … or a pre-approved template (first-touch / outside the window).
+  template?: string;
+  variables?: string[];
+  language?: string;
+}
+
+// Pull the provider message id out of wasify's response (or a generic body).
 function pickProviderId(payload: unknown): string | undefined {
   if (!payload || typeof payload !== "object") return undefined;
   const obj = payload as Record<string, unknown>;
-  const candidates = ["id", "message_id", "messageId", "sid"];
+  const candidates = [
+    "whatsapp_message_id",
+    "message_id",
+    "messageId",
+    "id",
+    "sid",
+  ];
   for (const key of candidates) {
     const value = obj[key];
     if (typeof value === "string" && value.length > 0) return value;
     if (typeof value === "number") return String(value);
-  }
-  // Some providers nest the id under data / messages[0].
-  const data = obj["data"];
-  if (data && typeof data === "object") {
-    const nested = pickProviderId(data);
-    if (nested) return nested;
-  }
-  const messages = obj["messages"];
-  if (Array.isArray(messages) && messages.length > 0) {
-    const nested = pickProviderId(messages[0]);
-    if (nested) return nested;
   }
   return undefined;
 }
@@ -58,41 +71,48 @@ function pickErrorMessage(payload: unknown, fallback: string): string {
   return fallback;
 }
 
-export async function sendWhatsAppMessage({
-  to,
-  message,
-}: {
-  to: string;
-  message: string;
-}): Promise<SendWhatsAppResult> {
+export async function sendWhatsAppMessage(
+  args: SendWhatsAppArgs
+): Promise<SendWhatsAppResult> {
+  const { to, message, template, variables, language } = args;
+
   const baseUrl = process.env.WHATSAPP_API_BASE_URL;
   const token = process.env.WHATSAPP_API_TOKEN;
-  const sender = process.env.WHATSAPP_SENDER;
 
   if (!baseUrl || !token) {
     return { ok: false, status: 0, error: "WhatsApp API not configured" };
   }
 
-  // ---------------------------------------------------------------------------
-  // adjust to match your provider — this is the one place to change the body
-  // shape so it matches whatever WhatsApp app you wire up.
-  // ---------------------------------------------------------------------------
-  const body = {
-    from: sender,
-    to,
-    type: "text",
-    text: { body: message },
-  };
+  if (!message && !template) {
+    return { ok: false, status: 0, error: "message or template is required" };
+  }
+
+  // wasify exposes the send endpoint at /api/outbound/send. Tolerate a base
+  // url given with or without a trailing slash (and one already including the
+  // path, in case it's configured that way).
+  const trimmed = baseUrl.replace(/\/+$/, "");
+  const endpoint = trimmed.endsWith("/api/outbound/send")
+    ? trimmed
+    : `${trimmed}/api/outbound/send`;
+
+  const payload: Record<string, unknown> = { to };
+  if (message) {
+    payload.message = message;
+  } else {
+    payload.template = template;
+    if (variables && variables.length > 0) payload.variables = variables;
+    if (language) payload.language = language;
+  }
 
   let response: Response;
   try {
-    response = await fetch(baseUrl, {
+    response = await fetch(endpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(payload),
     });
   } catch (err) {
     const error = err instanceof Error ? err.message : "network error";
@@ -110,7 +130,14 @@ export async function sendWhatsAppMessage({
     }
   }
 
-  if (response.ok) {
+  // wasify returns { ok: true, ... } on success; treat a 2xx with ok:false
+  // (shouldn't happen) as a failure too.
+  const bodyOk =
+    parsed && typeof parsed === "object"
+      ? (parsed as Record<string, unknown>).ok === true
+      : false;
+
+  if (response.ok && bodyOk) {
     return {
       ok: true,
       status: response.status,

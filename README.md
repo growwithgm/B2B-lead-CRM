@@ -97,9 +97,9 @@ npm run dev                  # http://localhost:3000
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase → Project Settings → API |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API (secret!) |
 | `KLAVIYO_WEBHOOK_SECRET` | Any random string you choose (20+ chars) |
-| `WHATSAPP_API_BASE_URL` | Your WhatsApp app's send endpoint |
-| `WHATSAPP_API_TOKEN` | Bearer token for that API (secret!) |
-| `WHATSAPP_SENDER` | Your sender id / from number |
+| `WHATSAPP_API_BASE_URL` | wasify origin (e.g. `https://wasify-one.vercel.app`) |
+| `WHATSAPP_API_TOKEN` | wasify's `WACRM_API_TOKEN` bearer (secret!) |
+| `WHATSAPP_SENDER` | Optional; unused by wasify (it resolves its own sender) |
 | `SHOPIFY_STORE_DOMAIN` | e.g. `my-store.myshopify.com` |
 | `SHOPIFY_ADMIN_API_TOKEN` | Custom-app Admin API token (secret!) |
 | `SHOPIFY_API_VERSION` | e.g. `2024-10` (defaults to `2024-10`) |
@@ -136,11 +136,12 @@ browser). The recipient is the lead's `whatsapp` (falling back to `phone`),
 normalized to E.164. Every send is logged to `activities` as a `whatsapp` row
 with the message + delivery status.
 
-The send adapter lives in [`lib/whatsapp.ts`](lib/whatsapp.ts) and is
-**env-configurable**. By default it POSTs JSON
-`{ from, to, type: "text", text: { body } }` with an `Authorization: Bearer`
-header. If your provider's request/response shape differs, adjust the clearly
-commented block in that file — no other code changes needed.
+The send adapter lives in [`lib/whatsapp.ts`](lib/whatsapp.ts) and routes
+**through the wasify app** so every conversation is logged in wasify's inbox.
+It POSTs `{ to, message }` to `{WHATSAPP_API_BASE_URL}/api/outbound/send` with an
+`Authorization: Bearer {WHATSAPP_API_TOKEN}` header (wasify's machine-callable
+outbound endpoint). The Meta access token stays inside wasify and never reaches
+this app.
 
 ---
 
