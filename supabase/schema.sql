@@ -23,14 +23,51 @@ create table if not exists leads (
   source text default 'klaviyo',
   stage text not null default 'new_lead',         -- see stage list below
   next_followup date,
-  assigned_to uuid references auth.users
+  assigned_to uuid references auth.users,
+
+  -- Design-backing columns (dashboard redesign). All optional/defaulted so the
+  -- Klaviyo webhook and existing inserts keep working unchanged.
+  lead_score integer default 0,
+  lead_quality text,                              -- hot | warm | cold
+  business_type text,
+  language text,
+  owner_name text,
+  est_monthly_value numeric,
+  website text,
+  instagram text,
+  categories text[],
+  klaviyo_profile_id text,
+  real_business boolean,
+  has_shop boolean,
+  next_action text,
+  last_contact_at timestamptz,
+
+  -- Sample tracking (Samples view + lead drawer)
+  sample_order_number text,
+  sample_status text,
+  sample_carrier text,
+  sample_tracking text,
+  sample_shipped_at timestamptz,
+  feedback_due date,
+
+  -- Lightweight feedback capture (Feedback view + lead drawer)
+  feedback_rating integer,
+  feedback_comment text,
+  feedback_favorite text,
+  feedback_interest text,                         -- yes | maybe | no
+
+  -- Shopify integration (Phase 3)
+  shopify_customer_id text,
+  shopify_company_id text,
+  last_order_total numeric,
+  last_order_at timestamptz
 );
 
 -- ACTIVITY TIMELINE
 create table if not exists activities (
   id uuid primary key default gen_random_uuid(),
   lead_id uuid references leads(id) on delete cascade,
-  type text default 'note',                       -- note | stage_change | sample_sent | feedback | email | call
+  type text default 'note',                       -- note | stage_change | sample_sent | feedback | email | call | whatsapp | shopify
   content text,
   created_by uuid references auth.users,
   created_at timestamptz default now()

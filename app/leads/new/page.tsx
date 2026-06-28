@@ -14,15 +14,15 @@ export default async function NewLeadPage() {
   if (!user) redirect("/login");
 
   return (
-    <main className="min-h-screen">
-      <header className="border-b border-neutral-200 bg-white">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-3">
-          <h1 className="text-lg font-semibold tracking-tight">Add lead</h1>
+    <main className="min-h-screen bg-canvas">
+      <header className="border-b border-line bg-white">
+        <div className="mx-auto flex max-w-2xl items-center justify-between px-4 py-4">
+          <h1 className="text-lg font-extrabold tracking-tight text-ink">Add lead</h1>
           <Link
-            href="/"
-            className="text-sm text-neutral-500 transition hover:text-neutral-800"
+            href="/leads"
+            className="text-sm font-semibold text-muted transition hover:text-muted-strong"
           >
-            ← Back to board
+            ← Back to leads
           </Link>
         </div>
       </header>

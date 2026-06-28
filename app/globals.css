@@ -8,14 +8,47 @@ body {
 }
 
 body {
-  @apply bg-neutral-100 text-neutral-900 antialiased;
+  @apply bg-canvas text-ink antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* Thin scrollbars for the kanban columns */
+input,
+button,
+select,
+textarea {
+  font-family: inherit;
+}
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+}
+select {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+/* Page scrollbars — soft, rounded, matching the design */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #dcdcd4;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #c6c6bc;
+  background-clip: content-box;
+}
+
+/* Thinner variant for inner scroll regions (kanban columns, drawers) */
 .scrollbar-thin::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 .scrollbar-thin::-webkit-scrollbar-thumb {
-  @apply bg-neutral-300 rounded-full;
+  @apply rounded-full bg-neutral-300;
 }

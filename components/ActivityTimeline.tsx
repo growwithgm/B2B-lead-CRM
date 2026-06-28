@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Activity, ActivityType } from "@/lib/types";
+import { formatDateTime } from "@/lib/design";
 
 const TYPE_LABELS: Record<ActivityType, string> = {
   note: "Note",
@@ -11,6 +12,8 @@ const TYPE_LABELS: Record<ActivityType, string> = {
   feedback: "Feedback",
   email: "Email",
   call: "Call",
+  whatsapp: "WhatsApp",
+  shopify: "Shopify",
 };
 
 const TYPE_STYLES: Record<ActivityType, string> = {
@@ -20,16 +23,9 @@ const TYPE_STYLES: Record<ActivityType, string> = {
   feedback: "bg-purple-50 text-purple-700",
   email: "bg-neutral-100 text-neutral-600",
   call: "bg-neutral-100 text-neutral-600",
+  whatsapp: "bg-[#E3F3EA] text-[#1F8A5B]",
+  shopify: "bg-[#ECE9F7] text-[#574099]",
 };
-
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 export default function ActivityTimeline({
   leadId,
@@ -88,13 +84,13 @@ export default function ActivityTimeline({
           onChange={(e) => setNote(e.target.value)}
           rows={2}
           placeholder="Add a note…"
-          className="w-full resize-none rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900"
+          className="w-full resize-none rounded-[10px] border border-line bg-white px-3 py-2 text-sm text-[#26302A] focus:border-brand focus:ring-2 focus:ring-brand/15"
         />
         <div className="mt-2 flex justify-end">
           <button
             type="submit"
             disabled={saving || !note.trim()}
-            className="rounded-lg bg-neutral-900 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-neutral-800 disabled:opacity-50"
+            className="rounded-[9px] bg-brand px-3 py-1.5 text-sm font-bold text-white transition hover:bg-brand-dark disabled:opacity-50"
           >
             {saving ? "Saving…" : "Add note"}
           </button>
@@ -102,9 +98,9 @@ export default function ActivityTimeline({
       </form>
 
       {loading ? (
-        <p className="text-sm text-neutral-400">Loading activity…</p>
+        <p className="text-sm text-muted">Loading activity…</p>
       ) : activities.length === 0 ? (
-        <p className="text-sm text-neutral-400">No activity yet.</p>
+        <p className="text-sm text-muted">No activity yet.</p>
       ) : (
         <ul className="space-y-3">
           {activities.map((a) => (
@@ -120,12 +116,12 @@ export default function ActivityTimeline({
                   >
                     {TYPE_LABELS[a.type] ?? a.type}
                   </span>
-                  <span className="text-xs text-neutral-400">
+                  <span className="text-xs text-[#A6AB9E]">
                     {formatDateTime(a.created_at)}
                   </span>
                 </div>
                 {a.content && (
-                  <p className="mt-1 whitespace-pre-wrap break-words text-sm text-neutral-700">
+                  <p className="mt-1 whitespace-pre-wrap break-words text-sm text-[#3E463C]">
                     {a.content}
                   </p>
                 )}

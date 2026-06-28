@@ -1,0 +1,19 @@
+{
+  "name": "grow-nest-crm-mcp",
+  "version": "1.0.0",
+  "description": "Self-contained MCP server for the B2B Lead CRM (Supabase Postgres).",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@supabase/supabase-js": "^2.45.4",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "@types/node": "^20.14.0"
+  }
+}

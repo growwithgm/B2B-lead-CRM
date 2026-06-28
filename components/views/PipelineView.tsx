@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 import {
   DndContext,
   PointerSensor,
@@ -11,11 +11,11 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import type { Lead } from "@/lib/types";
 import { STAGES, STAGE_LABELS, isStage, stageLabel } from "@/lib/stages";
-import KanbanColumn from "./KanbanColumn";
-import StatsBar from "./StatsBar";
-import LeadDrawer from "./LeadDrawer";
+import { useLeads } from "./useLeads";
+import KanbanColumn from "../KanbanColumn";
+import LeadDrawer from "../LeadDrawer";
 
-export default function KanbanBoard({
+export default function PipelineView({
   initialLeads,
   userId,
 }: {
@@ -23,13 +23,10 @@ export default function KanbanBoard({
   userId: string;
 }) {
   const supabase = useMemo(() => createClient(), []);
-  const [leads, setLeads] = useState<Lead[]>(initialLeads);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  // Timestamp of the last drag end, used to ignore the click that browsers
-  // fire on pointer-up right after a drag (which would wrongly open the drawer).
+  const { leads, setLeads, selected, openLead, closeLead, applyUpdate, removeLead } =
+    useLeads(initialLeads);
   const lastDragEnd = useRef(0);
 
-  // Require a small drag distance so clicks still open the drawer.
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
   );
@@ -37,26 +34,13 @@ export default function KanbanBoard({
   const byStage = useMemo(() => {
     const map: Record<string, Lead[]> = {};
     for (const stage of STAGES) map[stage] = [];
-    for (const lead of leads) {
-      (map[lead.stage] ?? (map[lead.stage] = [])).push(lead);
-    }
+    for (const lead of leads) (map[lead.stage] ?? (map[lead.stage] = [])).push(lead);
     return map;
   }, [leads]);
 
-  const selectedLead = leads.find((l) => l.id === selectedId) ?? null;
-
-  function applyLeadUpdate(updated: Lead) {
-    setLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
-  }
-
-  function removeLead(id: string) {
-    setLeads((prev) => prev.filter((l) => l.id !== id));
-    setSelectedId(null);
-  }
-
-  function openLead(lead: Lead) {
+  function open(lead: Lead) {
     if (Date.now() - lastDragEnd.current < 200) return;
-    setSelectedId(lead.id);
+    openLead(lead);
   }
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -73,10 +57,12 @@ export default function KanbanBoard({
 
     const fromLabel = stageLabel(lead.stage);
     const toLabel = stageLabel(newStage);
+    const previousStage = lead.stage;
 
     // Optimistic update.
-    const previousStage = lead.stage;
-    applyLeadUpdate({ ...lead, stage: newStage });
+    setLeads((prev) =>
+      prev.map((l) => (l.id === leadId ? { ...l, stage: newStage } : l))
+    );
 
     const { error } = await supabase
       .from("leads")
@@ -84,8 +70,9 @@ export default function KanbanBoard({
       .eq("id", leadId);
 
     if (error) {
-      // Roll back on failure.
-      applyLeadUpdate({ ...lead, stage: previousStage });
+      setLeads((prev) =>
+        prev.map((l) => (l.id === leadId ? { ...l, stage: previousStage } : l))
+      );
       console.error("Failed to update stage:", error.message);
       return;
     }
@@ -100,30 +87,29 @@ export default function KanbanBoard({
 
   return (
     <>
-      <StatsBar leads={leads} />
-
+      <div className="mb-3.5 flex items-center gap-2 text-[12.5px] font-medium text-muted">
+        Drag cards between columns to move a lead to a new stage.
+      </div>
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <div className="scrollbar-thin mx-auto max-w-[1600px] overflow-x-auto px-4 pb-8">
-          <div className="flex gap-4">
-            {STAGES.map((stage) => (
-              <KanbanColumn
-                key={stage}
-                stage={stage}
-                label={STAGE_LABELS[stage]}
-                leads={byStage[stage] ?? []}
-                onOpen={openLead}
-              />
-            ))}
-          </div>
+        <div className="scrollbar-thin flex items-start gap-3.5 overflow-x-auto pb-2.5">
+          {STAGES.map((stage) => (
+            <KanbanColumn
+              key={stage}
+              stage={stage}
+              label={STAGE_LABELS[stage]}
+              leads={byStage[stage] ?? []}
+              onOpen={open}
+            />
+          ))}
         </div>
       </DndContext>
 
-      {selectedLead && (
+      {selected && (
         <LeadDrawer
-          lead={selectedLead}
+          lead={selected}
           userId={userId}
-          onClose={() => setSelectedId(null)}
-          onUpdated={applyLeadUpdate}
+          onClose={closeLead}
+          onUpdated={applyUpdate}
           onDeleted={removeLead}
         />
       )}

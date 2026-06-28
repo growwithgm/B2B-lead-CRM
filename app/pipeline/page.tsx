@@ -1,21 +1,21 @@
 import AppShell from "@/components/shell/AppShell";
-import DashboardView from "@/components/views/DashboardView";
+import PipelineView from "@/components/views/PipelineView";
 import { loadCrm } from "@/lib/pageData";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
+export default async function PipelinePage() {
   const { userId, userEmail, leads, leadsCount, overdueCount } = await loadCrm();
   return (
     <AppShell
-      active="dashboard"
-      title="Dashboard"
-      subtitle="Overview of your B2B sample pipeline"
+      active="pipeline"
+      title="Pipeline"
+      subtitle="Drag leads across stages to update them"
       userEmail={userEmail}
       leadsCount={leadsCount}
       overdueCount={overdueCount}
     >
-      <DashboardView initialLeads={leads} userId={userId} />
+      <PipelineView initialLeads={leads} userId={userId} />
     </AppShell>
   );
 }

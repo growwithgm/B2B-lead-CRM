@@ -1,5 +1,7 @@
 import type { Stage } from "./stages";
 
+export type LeadQuality = "hot" | "warm" | "cold";
+
 export type Lead = {
   id: string;
   created_at: string;
@@ -20,6 +22,42 @@ export type Lead = {
   stage: Stage;
   next_followup: string | null;
   assigned_to: string | null;
+
+  // --- Design-backing columns (added to match the dashboard handoff) ---
+  lead_score: number | null;
+  lead_quality: LeadQuality | null;
+  business_type: string | null;
+  language: string | null;
+  owner_name: string | null;
+  est_monthly_value: number | null;
+  website: string | null;
+  instagram: string | null;
+  categories: string[] | null;
+  klaviyo_profile_id: string | null;
+  real_business: boolean | null;
+  has_shop: boolean | null;
+  next_action: string | null;
+  last_contact_at: string | null;
+
+  // Sample tracking (Samples view + drawer)
+  sample_order_number: string | null;
+  sample_status: string | null;
+  sample_carrier: string | null;
+  sample_tracking: string | null;
+  sample_shipped_at: string | null;
+  feedback_due: string | null;
+
+  // Lightweight feedback capture (Feedback view + drawer)
+  feedback_rating: number | null;
+  feedback_comment: string | null;
+  feedback_favorite: string | null;
+  feedback_interest: string | null;
+
+  // --- Shopify integration (Phase 3) ---
+  shopify_customer_id: string | null;
+  shopify_company_id: string | null;
+  last_order_total: number | null;
+  last_order_at: string | null;
 };
 
 export type ActivityType =
@@ -28,7 +66,9 @@ export type ActivityType =
   | "sample_sent"
   | "feedback"
   | "email"
-  | "call";
+  | "call"
+  | "whatsapp"
+  | "shopify";
 
 export type Activity = {
   id: string;
@@ -57,5 +97,14 @@ export type LeadEditableFields = Partial<
     | "requested_products"
     | "next_followup"
     | "stage"
+    | "lead_score"
+    | "lead_quality"
+    | "business_type"
+    | "language"
+    | "owner_name"
+    | "est_monthly_value"
+    | "website"
+    | "instagram"
+    | "next_action"
   >
 >;
