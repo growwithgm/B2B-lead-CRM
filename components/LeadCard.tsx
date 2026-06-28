@@ -2,6 +2,7 @@
 
 import { useDraggable } from "@dnd-kit/core";
 import type { Lead } from "@/lib/types";
+import { isTerminal } from "@/lib/stages";
 import {
   initials,
   colorFor,
@@ -35,7 +36,7 @@ export default function LeadCard({
   const name = leadDisplayName(lead);
   const q = qualityStyle(lead.lead_quality);
   const sc = scoreStyle(lead.lead_score);
-  const overdue = isOverdue(lead.next_followup) && lead.stage !== "won" && lead.stage !== "lost";
+  const overdue = isOverdue(lead.next_followup) && !isTerminal(lead.stage);
 
   return (
     <div

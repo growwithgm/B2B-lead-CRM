@@ -2,8 +2,16 @@
 
 import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import type { Lead, ActivityType, LeadQuality } from "@/lib/types";
-import { STAGES, STAGE_LABELS, stageLabel, stageMeta, stageIndex, type Stage } from "@/lib/stages";
+import type { Lead, LeadQuality } from "@/lib/types";
+import {
+  STAGES,
+  PIPELINE_STAGES,
+  STAGE_LABELS,
+  stageLabel,
+  stageMeta,
+  stageIndex,
+  type Stage,
+} from "@/lib/stages";
 import {
   cx,
   initials,
@@ -16,7 +24,7 @@ import {
   formatDate,
   toE164,
 } from "@/lib/design";
-import { IconClose, IconCheck, IconWhatsApp, IconShopping, IconStar } from "./shell/icons";
+import { IconClose, IconWhatsApp, IconShopping, IconStar } from "./shell/icons";
 import ActivityTimeline from "./ActivityTimeline";
 
 type FormState = {
@@ -176,48 +184,36 @@ export default function LeadDrawer({
     setMessage("Saved.");
   }
 
-  // Change stage + log an activity. Used by dropdown + quick buttons.
-  async function changeStage(
-    newStage: Stage,
-    activityType: ActivityType,
-    content: string
-  ) {
+  // All stage changes flow through the engine route so auto-advance + logging
+  // rules apply uniformly. The response reflects any auto-advance hop.
+  async function changeStage(newStage: Stage, reason?: string) {
     if (busyStage) return;
     setBusyStage(true);
     setMessage(null);
 
-    const { data, error } = await supabase
-      .from("leads")
-      .update({ stage: newStage, updated_at: new Date().toISOString() })
-      .eq("id", lead.id)
-      .select()
-      .single();
-
-    if (error) {
-      setBusyStage(false);
-      setMessage(`Update failed: ${error.message}`);
-      return;
+    try {
+      const res = await fetch("/api/leads/transition", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId: lead.id, targetStage: newStage, reason }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        setMessage(`Update failed: ${json.error ?? "error"}`);
+      } else if (json.lead) {
+        onUpdated(json.lead as Lead);
+      }
+    } catch (e) {
+      setMessage(`Update failed: ${e instanceof Error ? e.message : "network error"}`);
     }
 
-    await supabase.from("activities").insert({
-      lead_id: lead.id,
-      type: activityType,
-      content,
-      created_by: userId,
-    });
-
-    if (data) onUpdated(data as Lead);
     setRefreshKey((k) => k + 1);
     setBusyStage(false);
   }
 
   function handleStageSelect(newStage: Stage) {
     if (newStage === lead.stage) return;
-    changeStage(
-      newStage,
-      "stage_change",
-      `Moved: ${stageLabel(lead.stage)} → ${stageLabel(newStage)}`
-    );
+    changeStage(newStage, `Set stage to ${stageLabel(newStage)}`);
   }
 
   async function handleDelete() {
@@ -270,12 +266,45 @@ export default function LeadDrawer({
         setMessage("Shopify not configured yet (set the env vars).");
       } else if (json.ok) {
         setMessage(json.created ? "Shopify customer created." : "Existing Shopify customer linked.");
-        onUpdated({ ...lead, shopify_customer_id: json.customerId });
+        onUpdated({
+          ...lead,
+          shopify_customer_id: json.customerId,
+          stage: json.stage ?? lead.stage,
+        });
       } else {
         setMessage(`Shopify failed: ${json.error ?? "error"}`);
       }
     } catch (e) {
       setMessage(`Shopify failed: ${e instanceof Error ? e.message : "network error"}`);
+    }
+    setShopBusy(false);
+    setRefreshKey((k) => k + 1);
+  }
+
+  async function shopifySampleOrder() {
+    setShopBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/shopify/create-sample-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ leadId: lead.id }),
+      });
+      const json = await res.json();
+      if (json.notConfigured) {
+        setMessage("Shopify not configured yet (set the env vars).");
+      } else if (json.ok) {
+        setMessage(`Sample order created: ${json.name ?? json.orderId}`);
+        onUpdated({
+          ...lead,
+          sample_shopify_order_id: json.orderId,
+          stage: json.stage ?? lead.stage,
+        });
+      } else {
+        setMessage(`Sample order failed: ${json.error ?? "error"}`);
+      }
+    } catch (e) {
+      setMessage(`Sample order failed: ${e instanceof Error ? e.message : "network error"}`);
     }
     setShopBusy(false);
     setRefreshKey((k) => k + 1);
@@ -299,9 +328,9 @@ export default function LeadDrawer({
           last_order_total: json.totalSpent ?? lead.last_order_total,
           last_order_at: json.lastOrderAt ?? lead.last_order_at,
         });
-        if (json.canMarkWon && lead.stage !== "won") {
+        if (json.canMarkWon && lead.stage !== "converted") {
           if (confirm(`This customer has ${json.paidCount} paid order(s). Mark lead as Won?`)) {
-            await changeStage("won", "stage_change", "Marked Won — paid Shopify order found");
+            await changeStage("converted", "Paid Shopify order found");
           } else {
             setMessage(`Synced: ${json.orderCount} order(s), total ${json.totalSpent}.`);
           }
@@ -392,14 +421,16 @@ export default function LeadDrawer({
           <div className="mt-4">
             <div className="mb-1.5 flex items-center justify-between">
               <span className="text-[11px] font-bold uppercase tracking-wide text-muted">
-                Stage {idx + 1} of {STAGES.length}
+                {lead.stage === "lost"
+                  ? "Off pipeline"
+                  : `Stage ${idx + 1} of ${PIPELINE_STAGES.length}`}
               </span>
               <span className="text-[12px] font-bold text-brand-deep">
                 {stageLabel(lead.stage)}
               </span>
             </div>
             <div className="flex gap-1">
-              {STAGES.map((s, i) => (
+              {PIPELINE_STAGES.map((s, i) => (
                 <div
                   key={s}
                   className="h-1.5 flex-1 rounded-full"
@@ -461,14 +492,14 @@ export default function LeadDrawer({
 
                 <div className="mt-3 flex flex-wrap gap-2">
                   <button
-                    onClick={() => changeStage("sample_shipped", "sample_sent", "Sample sent")}
+                    onClick={() => changeStage("sample_shipped", "Marked sample sent")}
                     disabled={busyStage}
                     className="rounded-[10px] border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-800 transition hover:bg-amber-100 disabled:opacity-60"
                   >
                     Mark Sample Sent
                   </button>
                   <button
-                    onClick={() => changeStage("feedback", "feedback", "Feedback received")}
+                    onClick={() => changeStage("feedback_received", "Marked feedback received")}
                     disabled={busyStage}
                     className="rounded-[10px] border border-purple-300 bg-purple-50 px-3 py-1.5 text-sm font-semibold text-purple-800 transition hover:bg-purple-100 disabled:opacity-60"
                   >
@@ -562,6 +593,13 @@ export default function LeadDrawer({
                   >
                     <IconShopping size={15} />
                     {lead.shopify_customer_id ? "Re-link customer" : "Create in Shopify"}
+                  </button>
+                  <button
+                    onClick={shopifySampleOrder}
+                    disabled={shopBusy}
+                    className="rounded-[10px] border border-line bg-white px-3 py-1.5 text-sm font-semibold text-muted-soft transition hover:bg-[#F4F4EF] disabled:opacity-50"
+                  >
+                    Create sample order
                   </button>
                   <button
                     onClick={shopifySync}

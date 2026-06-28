@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import type { Lead } from "@/lib/types";
-import { stageLabel } from "@/lib/stages";
+import { stageLabel, isTerminal } from "@/lib/stages";
 import { leadDisplayName, dueLabel, isOverdue } from "@/lib/design";
 import { useLeads } from "./useLeads";
 import LeadDrawer from "../LeadDrawer";
@@ -18,9 +18,7 @@ export default function FollowupsView({
     useLeads(initialLeads);
 
   const groups = useMemo(() => {
-    const withDue = leads.filter(
-      (l) => l.next_followup && l.stage !== "won" && l.stage !== "lost"
-    );
+    const withDue = leads.filter((l) => l.next_followup && !isTerminal(l.stage));
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const isToday = (d: string) => {

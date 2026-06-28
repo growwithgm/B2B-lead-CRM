@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { Lead } from "@/lib/types";
 import { isOverdue } from "@/lib/design";
+import { isTerminal } from "@/lib/stages";
 
 // Shared server-side loader for the authenticated CRM pages: enforces auth,
 // fetches the shared lead list, and computes the sidebar badge counts.
@@ -25,7 +26,7 @@ export async function loadCrm(): Promise<{
 
   const leads = (data ?? []) as Lead[];
   const overdueCount = leads.filter(
-    (l) => isOverdue(l.next_followup) && l.stage !== "won" && l.stage !== "lost"
+    (l) => isOverdue(l.next_followup) && !isTerminal(l.stage)
   ).length;
 
   return {

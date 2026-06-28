@@ -1,5 +1,5 @@
 import type { Lead } from "@/lib/types";
-import { STAGES, STAGE_LABELS, stageMeta, stageIndex } from "@/lib/stages";
+import { PIPELINE_STAGES, STAGE_LABELS, stageMeta, isAtOrAfter } from "@/lib/stages";
 import { initials, colorFor } from "@/lib/design";
 
 // Pure server component — aggregate analytics derived from real lead data.
@@ -9,10 +9,12 @@ export default function ReportsView({ leads }: { leads: Lead[] }) {
   const newWeek = leads.filter(
     (l) => Date.now() - new Date(l.created_at).getTime() < 7 * 864e5
   ).length;
-  const qualified = active.filter((l) => stageIndex(l.stage) >= 2).length;
-  const samplesSent = active.filter((l) => stageIndex(l.stage) >= 3).length;
+  const qualified = active.filter((l) => isAtOrAfter(l.stage, "qualified")).length;
+  const samplesSent = active.filter((l) =>
+    isAtOrAfter(l.stage, "sample_order_created")
+  ).length;
   const feedbackCount = leads.filter((l) => l.feedback_rating != null && l.feedback_rating > 0).length;
-  const won = leads.filter((l) => l.stage === "won").length;
+  const won = leads.filter((l) => l.stage === "converted").length;
   const convRate = total ? (won / total) * 100 : 0;
 
   const repStats = [
@@ -42,9 +44,9 @@ export default function ReportsView({ leads }: { leads: Lead[] }) {
 
   // Stage distribution
   const counts: Record<string, number> = {};
-  for (const s of STAGES) counts[s] = 0;
+  for (const s of PIPELINE_STAGES) counts[s] = 0;
   for (const l of leads) counts[l.stage] = (counts[l.stage] ?? 0) + 1;
-  const stageMax = Math.max(1, ...STAGES.map((s) => counts[s]));
+  const stageMax = Math.max(1, ...PIPELINE_STAGES.map((s) => counts[s]));
 
   // Owner performance (by owner_name)
   const ownerMap = new Map<string, { leads: number; samples: number; won: number }>();
@@ -52,8 +54,8 @@ export default function ReportsView({ leads }: { leads: Lead[] }) {
     const key = l.owner_name || "Unassigned";
     const o = ownerMap.get(key) ?? { leads: 0, samples: 0, won: 0 };
     o.leads += 1;
-    if (stageIndex(l.stage) >= 3 && l.stage !== "lost") o.samples += 1;
-    if (l.stage === "won") o.won += 1;
+    if (isAtOrAfter(l.stage, "sample_order_created") && l.stage !== "lost") o.samples += 1;
+    if (l.stage === "converted") o.won += 1;
     ownerMap.set(key, o);
   }
   const owners = Array.from(ownerMap.entries())
@@ -101,7 +103,7 @@ export default function ReportsView({ leads }: { leads: Lead[] }) {
         <div className="min-w-0 flex-[1_1_250px] rounded-[16px] border border-line bg-white p-5 shadow-card">
           <div className="text-[14.5px] font-extrabold tracking-tight text-ink">Stage distribution</div>
           <div className="mt-4 flex flex-col gap-2.5">
-            {STAGES.map((s) => {
+            {PIPELINE_STAGES.map((s) => {
               const meta = stageMeta(s);
               return (
                 <div key={s} className="flex items-center gap-3">

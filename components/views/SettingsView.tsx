@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { STAGES, STAGE_LABELS } from "@/lib/stages";
+import { PIPELINE_STAGES, STAGE_LABELS } from "@/lib/stages";
 
 const NOTIF = [
   { key: "overdueAlerts", label: "Overdue follow-up alerts", desc: "Notify when a task becomes overdue", on: true },
@@ -73,9 +73,9 @@ export default function SettingsView({ userEmail }: { userEmail: string }) {
       </div>
 
       <Card title="Pipeline stages" full>
-        <div className="mb-3.5 text-[12.5px] text-muted">The {STAGES.length} stages a lead moves through, from capture to won.</div>
+        <div className="mb-3.5 text-[12.5px] text-muted">The {PIPELINE_STAGES.length} stages a lead moves through, from capture to converted (plus a terminal Lost).</div>
         <div className="flex flex-wrap gap-2">
-          {STAGES.map((s, i) => (
+          {PIPELINE_STAGES.map((s, i) => (
             <span key={s} className="inline-flex items-center gap-2 rounded-full border border-line bg-[#F6F6F2] py-1.5 pl-1.5 pr-3 text-[12px] font-semibold text-muted-strong">
               <span className="flex h-[19px] w-[19px] items-center justify-center rounded-full bg-brand font-mono text-[10px] font-bold text-white">{i + 1}</span>
               {STAGE_LABELS[s]}

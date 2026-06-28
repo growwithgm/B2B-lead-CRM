@@ -8,7 +8,6 @@ import {
   useSensors,
   type DragEndEvent,
 } from "@dnd-kit/core";
-import { createClient } from "@/lib/supabase/client";
 import type { Lead } from "@/lib/types";
 import { STAGES, STAGE_LABELS, isStage, stageLabel } from "@/lib/stages";
 import { useLeads } from "./useLeads";
@@ -22,7 +21,6 @@ export default function PipelineView({
   initialLeads: Lead[];
   userId: string;
 }) {
-  const supabase = useMemo(() => createClient(), []);
   const { leads, setLeads, selected, openLead, closeLead, applyUpdate, removeLead } =
     useLeads(initialLeads);
   const lastDragEnd = useRef(0);
@@ -59,30 +57,31 @@ export default function PipelineView({
     const toLabel = stageLabel(newStage);
     const previousStage = lead.stage;
 
-    // Optimistic update.
+    // Optimistic move; the engine response is authoritative (it may auto-advance).
     setLeads((prev) =>
       prev.map((l) => (l.id === leadId ? { ...l, stage: newStage } : l))
     );
 
-    const { error } = await supabase
-      .from("leads")
-      .update({ stage: newStage, updated_at: new Date().toISOString() })
-      .eq("id", leadId);
-
-    if (error) {
+    try {
+      const res = await fetch("/api/leads/transition", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          leadId,
+          targetStage: newStage,
+          reason: `Dragged ${fromLabel} → ${toLabel}`,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error ?? "transition failed");
+      if (json.lead) applyUpdate(json.lead as Lead);
+    } catch (err) {
+      // Roll back on failure.
       setLeads((prev) =>
         prev.map((l) => (l.id === leadId ? { ...l, stage: previousStage } : l))
       );
-      console.error("Failed to update stage:", error.message);
-      return;
+      console.error("Failed to update stage:", err);
     }
-
-    await supabase.from("activities").insert({
-      lead_id: leadId,
-      type: "stage_change",
-      content: `Moved: ${fromLabel} → ${toLabel}`,
-      created_by: userId,
-    });
   }
 
   return (

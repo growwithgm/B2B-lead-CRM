@@ -21,7 +21,7 @@ create table if not exists leads (
   brand text,
   requested_products text,
   source text default 'klaviyo',
-  stage text not null default 'new_lead',         -- see stage list below
+  stage text not null default 'new_lead',         -- 16 pipeline stages + 'lost' (see lib/stages.ts)
   next_followup date,
   assigned_to uuid references auth.users,
 
@@ -56,11 +56,13 @@ create table if not exists leads (
   feedback_favorite text,
   feedback_interest text,                         -- yes | maybe | no
 
-  -- Shopify integration (Phase 3)
+  -- Shopify integration (customer, orders, sample/converted order ids)
   shopify_customer_id text,
   shopify_company_id text,
   last_order_total numeric,
-  last_order_at timestamptz
+  last_order_at timestamptz,
+  sample_shopify_order_id text,
+  converted_order_id text
 );
 
 -- ACTIVITY TIMELINE

@@ -2,20 +2,20 @@
 
 import { useMemo } from "react";
 import type { Lead } from "@/lib/types";
-import { stageIndex, stageLabel } from "@/lib/stages";
+import { isAtOrAfter, stageLabel } from "@/lib/stages";
 import { initials, qualityStyle, leadDisplayName, colorFor, formatDate } from "@/lib/design";
 import { useLeads } from "./useLeads";
 import LeadDrawer from "../LeadDrawer";
 
-// A "sample" is any lead that has reached the sample-ordered stage or beyond
-// (sample_ordered index 3). We surface the sample-tracking fields here.
+// A "sample" is any lead that has reached the sample-order-created stage or
+// beyond. We surface the sample-tracking fields here.
 const STEPS = ["Ordered", "Shipped", "Delivered", "Feedback"];
 
 function sampleStep(lead: Lead): number {
-  const i = stageIndex(lead.stage);
-  if (i >= 5) return 4; // feedback+
-  if (i >= 4) return 3; // sample_shipped → delivered-ish
-  if (i >= 3) return 1; // sample_ordered
+  if (isAtOrAfter(lead.stage, "feedback_pending")) return 4;
+  if (isAtOrAfter(lead.stage, "sample_delivered")) return 3;
+  if (isAtOrAfter(lead.stage, "sample_shipped")) return 2;
+  if (isAtOrAfter(lead.stage, "sample_order_created")) return 1;
   return 0;
 }
 
@@ -30,7 +30,7 @@ export default function SamplesView({
     useLeads(initialLeads);
 
   const samples = useMemo(
-    () => leads.filter((l) => stageIndex(l.stage) >= 3 && l.stage !== "lost"),
+    () => leads.filter((l) => isAtOrAfter(l.stage, "sample_order_created") && l.stage !== "lost"),
     [leads]
   );
 

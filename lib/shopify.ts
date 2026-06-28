@@ -242,6 +242,69 @@ export async function createOrFindCustomer(input: {
   return { ok: true, customerId: normalizeCustomerGid(newId), created: true };
 }
 
+// --- createSampleDraftOrder ------------------------------------------------
+
+interface DraftOrderNode {
+  id: string;
+  name?: string | null;
+}
+
+interface DraftOrderCreateData {
+  draftOrderCreate?: {
+    draftOrder?: DraftOrderNode | null;
+    userErrors?: UserError[] | null;
+  } | null;
+}
+
+// Creates a Shopify SAMPLE order as a draft order for the lead's customer.
+// Returns the draft order's GID (stored on the lead as sample_shopify_order_id).
+// A single custom line item is used so no product/variant selection is needed.
+export async function createSampleDraftOrder(input: {
+  customerId?: string | null;
+  email?: string | null;
+  title?: string;
+  note?: string;
+}): Promise<{ ok: boolean; orderId?: string; name?: string; error?: string }> {
+  const mutation = `
+    mutation CreateSampleDraft($input: DraftOrderInput!) {
+      draftOrderCreate(input: $input) {
+        draftOrder { id name }
+        userErrors { field message }
+      }
+    }
+  `;
+
+  const draftInput: Record<string, unknown> = {
+    lineItems: [
+      {
+        title: input.title?.trim() || "Sample pack",
+        quantity: 1,
+        originalUnitPrice: "0.00",
+      },
+    ],
+    note: input.note?.trim() || "B2B sample order (created from CRM)",
+    tags: ["sample", "crm"],
+  };
+  if (input.customerId) {
+    draftInput.purchasingEntity = { customerId: normalizeCustomerGid(input.customerId) };
+  } else if (input.email) {
+    draftInput.email = input.email.trim();
+  }
+
+  const res = await shopifyGraphQL<DraftOrderCreateData>(mutation, { input: draftInput });
+  if (!res.ok) {
+    return { ok: false, error: res.errors ?? "Failed to create sample order" };
+  }
+
+  const userErr = joinUserErrors(res.data?.draftOrderCreate?.userErrors);
+  if (userErr) return { ok: false, error: userErr };
+
+  const node = res.data?.draftOrderCreate?.draftOrder;
+  if (!node?.id) return { ok: false, error: "Sample order was not created" };
+
+  return { ok: true, orderId: node.id, name: node.name ?? undefined };
+}
+
 // --- getCustomerOrders -----------------------------------------------------
 
 interface OrderNode {

@@ -53,11 +53,13 @@ export type Lead = {
   feedback_favorite: string | null;
   feedback_interest: string | null;
 
-  // --- Shopify integration (Phase 3) ---
+  // --- Shopify integration ---
   shopify_customer_id: string | null;
   shopify_company_id: string | null;
   last_order_total: number | null;
   last_order_at: string | null;
+  sample_shopify_order_id: string | null;
+  converted_order_id: string | null;
 };
 
 export type ActivityType =

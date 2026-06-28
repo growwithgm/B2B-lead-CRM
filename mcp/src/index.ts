@@ -58,27 +58,45 @@ const supabase: SupabaseClient = createClient(
 
 const STAGES = [
   "new_lead",
+  "contact_pending",
   "contacted",
-  "account_created",
-  "sample_ordered",
+  "info_required",
+  "qualified",
+  "shopify_company_pending",
+  "shopify_company_created",
+  "product_selection_pending",
+  "sample_order_created",
   "sample_shipped",
-  "feedback",
-  "won",
+  "sample_delivered",
+  "feedback_pending",
+  "feedback_received",
+  "b2b_offer_sent",
+  "first_order_pending",
+  "converted",
   "lost",
 ] as const;
 
 const STAGE_LABELS: Record<(typeof STAGES)[number], string> = {
   new_lead: "New Lead",
+  contact_pending: "Contact Pending",
   contacted: "Contacted",
-  account_created: "Account Created",
-  sample_ordered: "Sample Ordered",
+  info_required: "Info Required",
+  qualified: "Qualified",
+  shopify_company_pending: "Shopify Company Pending",
+  shopify_company_created: "Shopify Company Created",
+  product_selection_pending: "Product Selection Pending",
+  sample_order_created: "Sample Order Created",
   sample_shipped: "Sample Shipped",
-  feedback: "Feedback",
-  won: "Won",
+  sample_delivered: "Sample Delivered",
+  feedback_pending: "Feedback Pending",
+  feedback_received: "Feedback Received",
+  b2b_offer_sent: "B2B Offer Sent",
+  first_order_pending: "First Order Pending",
+  converted: "Converted",
   lost: "Lost",
 };
 
-const TERMINAL_STAGES = ["won", "lost"] as const;
+const TERMINAL_STAGES = ["converted", "lost"] as const;
 
 const ACTIVITY_TYPES = ["note", "email", "call", "whatsapp", "feedback"] as const;
 
@@ -163,7 +181,7 @@ server.registerTool(
       "search across contact_name/company_name/email, and/or overdue follow-ups.",
     inputSchema: {
       api_key: apiKeySchema,
-      stage: stageSchema.optional().describe("Filter by one of the 8 pipeline stages."),
+      stage: stageSchema.optional().describe("Filter by one of the 16 pipeline stages (or 'lost')."),
       search: z
         .string()
         .optional()
@@ -171,7 +189,7 @@ server.registerTool(
       overdue: z
         .boolean()
         .optional()
-        .describe("If true, only leads with next_followup < today and stage not won/lost."),
+        .describe("If true, only leads with next_followup < today and stage not converted/lost."),
     },
   },
   async ({ api_key, stage, search, overdue }) => {
@@ -343,11 +361,11 @@ server.registerTool(
   {
     title: "Update lead stage",
     description:
-      "Guarded write. Move a lead to one of the 8 valid stages and record a 'stage_change' activity.",
+      "Guarded write. Move a lead to one of the 16 valid stages (or 'lost') and record a 'stage_change' activity.",
     inputSchema: {
       api_key: apiKeySchema,
       lead_id: z.string().uuid().describe("Lead id (uuid)."),
-      stage: stageSchema.describe("Target stage (must be one of the 8 valid stages)."),
+      stage: stageSchema.describe("Target stage (must be one of the 16 valid stages, or 'lost')."),
     },
   },
   async ({ api_key, lead_id, stage }) => {

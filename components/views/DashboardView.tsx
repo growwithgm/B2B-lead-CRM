@@ -3,7 +3,14 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import type { Lead } from "@/lib/types";
-import { STAGES, STAGE_LABELS, stageMeta, stageLabel, stageIndex } from "@/lib/stages";
+import {
+  PIPELINE_STAGES,
+  STAGE_LABELS,
+  stageMeta,
+  stageLabel,
+  isAtOrAfter,
+  isTerminal,
+} from "@/lib/stages";
 import {
   initials,
   colorFor,
@@ -32,12 +39,16 @@ export default function DashboardView({
     const newWeek = leads.filter(
       (l) => Date.now() - new Date(l.created_at).getTime() < 7 * 864e5
     ).length;
-    const qualified = active.filter((l) => stageIndex(l.stage) >= 2).length;
-    const samplesSent = active.filter((l) => stageIndex(l.stage) >= 3).length;
-    const feedback = leads.filter((l) => l.stage === "feedback").length;
-    const won = leads.filter((l) => l.stage === "won").length;
+    const qualified = active.filter((l) => isAtOrAfter(l.stage, "qualified")).length;
+    const samplesSent = active.filter((l) =>
+      isAtOrAfter(l.stage, "sample_order_created")
+    ).length;
+    const feedback = leads.filter(
+      (l) => l.stage === "feedback_pending" || l.stage === "feedback_received"
+    ).length;
+    const won = leads.filter((l) => l.stage === "converted").length;
     const overdue = leads.filter(
-      (l) => isOverdue(l.next_followup) && l.stage !== "won" && l.stage !== "lost"
+      (l) => isOverdue(l.next_followup) && !isTerminal(l.stage)
     ).length;
     const convRate = total ? (won / total) * 100 : 0;
     return { total, newWeek, qualified, samplesSent, feedback, won, overdue, convRate };
@@ -45,10 +56,10 @@ export default function DashboardView({
 
   const funnel = useMemo(() => {
     const counts: Record<string, number> = {};
-    for (const s of STAGES) counts[s] = 0;
+    for (const s of PIPELINE_STAGES) counts[s] = 0;
     for (const l of leads) counts[l.stage] = (counts[l.stage] ?? 0) + 1;
-    const max = Math.max(1, ...STAGES.map((s) => counts[s]));
-    return STAGES.map((s) => ({
+    const max = Math.max(1, ...PIPELINE_STAGES.map((s) => counts[s]));
+    return PIPELINE_STAGES.map((s) => ({
       stage: s,
       label: STAGE_LABELS[s],
       count: counts[s],
@@ -60,7 +71,7 @@ export default function DashboardView({
   const dueSoon = useMemo(
     () =>
       leads
-        .filter((l) => l.next_followup && l.stage !== "won" && l.stage !== "lost")
+        .filter((l) => l.next_followup && !isTerminal(l.stage))
         .sort((a, b) => (a.next_followup! < b.next_followup! ? -1 : 1))
         .slice(0, 5),
     [leads]

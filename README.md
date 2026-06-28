@@ -14,12 +14,43 @@ Deploys on **Vercel**.
 
 ## Pipeline stages
 
-`new_lead` · `contacted` · `account_created` · `sample_ordered` ·
-`sample_shipped` · `feedback` · `won` · `lost`
+16 ordered pipeline stages, plus a terminal off-pipeline `lost`:
 
-(Displayed as: New Lead, Contacted, Account Created, Sample Ordered,
-Sample Shipped, Feedback, Won, Lost.) These 8 values are a hard contract — the
-DB, UI, webhook, and MCP server all depend on them.
+1 `new_lead` · 2 `contact_pending` · 3 `contacted` · 4 `info_required` ·
+5 `qualified` · 6 `shopify_company_pending` · 7 `shopify_company_created` ·
+8 `product_selection_pending` · 9 `sample_order_created` · 10 `sample_shipped` ·
+11 `sample_delivered` · 12 `feedback_pending` · 13 `feedback_received` ·
+14 `b2b_offer_sent` · 15 `first_order_pending` · 16 `converted` — plus `lost`.
+
+These values are the single source of truth in [`lib/stages.ts`](lib/stages.ts)
+and are a hard contract: the DB, UI, transition engine, webhooks, and MCP server
+all depend on them. Each pipeline stage has an order index so transitions can
+compare forward/backward; `lost` is off-pipeline (order 0).
+
+### Stage transitions (auto / manual engine)
+
+Every stage change — drag-drop, the stage dropdown, drawer buttons, Shopify
+routes, and Shopify webhooks — flows through one function,
+`applyStageTransition` in [`lib/stage-engine.ts`](lib/stage-engine.ts):
+
+- **Forward-only for AUTO** moves; manual moves may go anywhere (incl. backward
+  or to `lost`).
+- **`lost` is never overridden automatically.**
+- **Idempotent**: an auto move to a stage we're already at/after is a no-op
+  (webhooks can fire twice).
+- Every real change logs a `stage_change` activity (old → new, auto/manual).
+- **Auto-advance** pairs run after any change:
+  `new_lead → contact_pending`, `qualified → shopify_company_pending`,
+  `shopify_company_created → product_selection_pending`,
+  `sample_delivered → feedback_pending`.
+
+**Manual** stages (set by a person): `contacted`, `info_required`, `qualified`,
+`sample_delivered`, `feedback_received`, `b2b_offer_sent`, `first_order_pending`,
+`lost`. **Action/webhook-driven AUTO** stages: `shopify_company_created` (create
+customer), `sample_order_created` (create sample order), `sample_shipped`
+(fulfillment webhook), `converted` (order-paid webhook), plus the auto-advance
+pending stages above. UI changes call `POST /api/leads/transition`; the Klaviyo
+webhook auto-advances new leads to `contact_pending`.
 
 ---
 
@@ -72,6 +103,8 @@ npm run dev                  # http://localhost:3000
 | `SHOPIFY_STORE_DOMAIN` | e.g. `my-store.myshopify.com` |
 | `SHOPIFY_ADMIN_API_TOKEN` | Custom-app Admin API token (secret!) |
 | `SHOPIFY_API_VERSION` | e.g. `2024-10` (defaults to `2024-10`) |
+| `SHOPIFY_WEBHOOK_SECRET` | HMAC secret Shopify signs webhooks with (secret!) |
+| `SHOPIFY_WEBHOOK_CALLBACK_URL` | Webhook endpoint for the registration script (defaults to the prod URL) |
 | `MCP_API_KEY` | Shared secret to use the MCP server (secret!) |
 
 > Secret keys are used **only** server-side. Never expose them to the browser.
@@ -83,12 +116,13 @@ npm run dev                  # http://localhost:3000
 ## 2. Supabase setup
 
 1. Create a Supabase project.
-2. Open the **SQL Editor** and run [`supabase/schema.sql`](supabase/schema.sql)
-   (fresh setup), **or** if you already have the original tables, run the
-   idempotent migration
-   [`supabase/migrations/0001_design_shopify_whatsapp.sql`](supabase/migrations/0001_design_shopify_whatsapp.sql)
-   to add the new columns (design fields + Shopify columns). Both are safe to
-   re-run.
+2. Open the **SQL Editor**. Fresh setup: run [`supabase/schema.sql`](supabase/schema.sql).
+   Existing DB: run the idempotent migrations **in order** —
+   [`0001_design_shopify_whatsapp.sql`](supabase/migrations/0001_design_shopify_whatsapp.sql)
+   (design + Shopify columns), then
+   [`0002_sixteen_stages.sql`](supabase/migrations/0002_sixteen_stages.sql)
+   (remaps the old 8 stages to the new 16 and adds `sample_shopify_order_id` /
+   `converted_order_id`). All are safe to re-run.
 3. Invite owners: **Authentication → Users → Add user**. Email/password sign-in
    must be enabled under **Authentication → Providers → Email**.
 
@@ -110,23 +144,61 @@ commented block in that file — no other code changes needed.
 
 ---
 
-## 4. Shopify (create customer + read orders)
+## 4. Shopify (customers, sample orders, webhooks)
 
-Server routes (logged-in only), using the Shopify Admin **GraphQL** API:
+Server routes (logged-in only), using the Shopify Admin **GraphQL** API. Each
+also drives the pipeline through the transition engine:
 
-- `POST /api/shopify/create-customer` — create-or-find a customer for the lead
-  (email + name + phone, company stored as a note/tag) and save
-  `shopify_customer_id` on the lead.
+- `POST /api/shopify/create-customer` — create-or-find a customer, save
+  `shopify_customer_id`, then AUTO → `shopify_company_created` (engine
+  auto-advances to `product_selection_pending`).
+- `POST /api/shopify/create-sample-order` — create a Shopify sample order (draft
+  order), save its id to `sample_shopify_order_id`, then AUTO →
+  `sample_order_created`.
 - `POST /api/shopify/sync-orders` — read the customer's orders, store
-  `last_order_total` / `last_order_at`, and (if ≥1 paid order) offer to mark the
-  lead **won**.
+  `last_order_total` / `last_order_at`; if ≥1 paid order, offer to mark the lead
+  **converted**.
 
-Both log a `shopify` activity. Create a **custom app** in your Shopify admin and
-grant these Admin API scopes:
+### Webhooks (full auto)
 
-- `read_customers`
-- `write_customers`
-- `read_orders`
+`POST /api/shopify/webhooks` verifies the Shopify **HMAC** (raw body, header
+`X-Shopify-Hmac-Sha256`, secret `SHOPIFY_WEBHOOK_SECRET`) and dispatches by the
+`X-Shopify-Topic` header. It always returns 200 on a valid request and is
+idempotent + forward-only via the engine:
+
+- **`orders/fulfilled`** → the lead whose `sample_shopify_order_id` matches the
+  order → `sample_shipped`.
+- **`orders/paid`** → lead by `shopify_customer_id`; if the paid order is **not**
+  the sample order → `converted` (saves `converted_order_id`, `last_order_total`,
+  `last_order_at`). If it *is* the sample order, it's ignored.
+
+> The webhook path is excluded from auth middleware (like the Klaviyo webhook).
+> Order-id matching is tolerant (GID / numeric id / name). If you use the draft
+> sample-order flow, set the lead's `sample_shopify_order_id` to the real
+> fulfilled order's id (or extend the flow to complete the draft) so fulfillment
+> matching lands.
+
+**Register the webhooks** (set the Shopify env vars first):
+
+```bash
+npx tsx scripts/register-shopify-webhooks.ts
+```
+
+This subscribes `ORDERS_FULFILLED` and `ORDERS_PAID` to
+`SHOPIFY_WEBHOOK_CALLBACK_URL`. **Manual fallback:** Shopify admin → Settings →
+Notifications → Webhooks → create one for *Order fulfillment* and one for
+*Order payment*, both pointing at `/api/shopify/webhooks` (JSON). Then copy the
+signing secret into `SHOPIFY_WEBHOOK_SECRET`.
+
+### Custom-app Admin API scopes
+
+- `read_customers`, `write_customers` — create/find customers
+- `read_orders` — read orders (sync + order-paid webhook)
+- `read_fulfillments` — recommended for the fulfillment webhook (order/fulfillment data)
+- `write_draft_orders` — required for the sample-order (draft order) action
+
+`read_orders` covers reading order/payment data; the **fulfillment** webhook is
+most reliable with `read_fulfillments` also enabled.
 
 ---
 
@@ -136,8 +208,8 @@ A self-contained TypeScript MCP server lives in [`mcp/`](mcp/) and exposes the
 CRM to Claude over stdio. **Read** tools: `list_leads`, `get_lead`,
 `list_activities`. **Write** tools (guarded; each also logs an activity):
 `create_lead`, `update_lead_stage`, `add_activity`, `set_followup`. Writes never
-delete data and stage values are validated against the 8 stages. Every tool
-requires the `MCP_API_KEY`. See [`mcp/README.md`](mcp/README.md) for build/run
+delete data and stage values are validated against the 16 stages (+ `lost`).
+Every tool requires the `MCP_API_KEY`. See [`mcp/README.md`](mcp/README.md) for build/run
 and Claude config. It has its **own** `package.json` and is excluded from the
 Next.js build.
 

@@ -55,9 +55,10 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Run on all routes except static assets and the webhook API.
-  // The webhook authenticates with its own secret, not a user session.
+  // Run on all routes except static assets and the secret-authenticated
+  // webhooks (Klaviyo + Shopify), which use their own secret/HMAC, not a
+  // user session, and must not be redirected to /login.
   matcher: [
-    "/((?!api/klaviyo-webhook|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!api/klaviyo-webhook|api/shopify/webhooks|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
 };
