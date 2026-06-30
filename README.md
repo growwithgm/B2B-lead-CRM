@@ -39,7 +39,9 @@ routes, and Shopify webhooks — flows through one function,
 - **Idempotent**: an auto move to a stage we're already at/after is a no-op
   (webhooks can fire twice).
 - Every real change logs a `stage_change` activity (old → new, auto/manual).
-- **Auto-advance** pairs run after any change:
+- **Auto-advance** pairs run after any **AUTO** change (Klaviyo intake, Shopify
+  actions/webhooks). **Manual UI moves do not auto-advance**, so a person can land
+  and rest a lead on any of the 16 stages by hand (drag-drop / stage dropdown):
   `new_lead → contact_pending`, `qualified → shopify_company_pending`,
   `shopify_company_created → product_selection_pending`,
   `sample_delivered → feedback_pending`.

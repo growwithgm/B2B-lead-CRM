@@ -9,7 +9,9 @@
 //  - Idempotent: an auto move to a stage we're already at/after is a no-op
 //    (webhooks can fire more than once).
 //  - Every real change logs a `stage_change` activity (old → new, auto/manual).
-//  - After any successful change, "pending" stages auto-advance one step.
+//  - After a successful AUTO change, "pending" stages auto-advance one step.
+//    Manual moves do NOT auto-advance, so a person can rest a lead on any of
+//    the 16 stages by hand (drag-drop / stage dropdown).
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { STAGE_LABELS, isStage, isAtOrAfter, stageLabel, type Stage } from "./stages";
@@ -105,20 +107,25 @@ export async function applyStageTransition(
     created_by: opts.createdBy ?? null,
   });
 
-  // Auto-advance pending stages. The advance is itself an AUTO transition, so
-  // it is forward-only, never overrides lost, and cannot loop (no target is
-  // also a key after the first hop).
+  // Auto-advance pending stages — ONLY for AUTO transitions (Klaviyo intake,
+  // Shopify webhooks/actions). Manual UI moves (auto:false) intentionally do not
+  // auto-advance, so a person can land and rest a lead on ANY stage by hand
+  // (including the otherwise Shopify-automatic ones). The advance is itself an
+  // AUTO transition: forward-only, never overrides lost, and cannot loop (no
+  // target is also a key after the first hop).
   let finalStage: string = targetStage;
-  const next = AUTO_ADVANCE[targetStage];
-  if (next) {
-    const adv = await applyStageTransition(supabase, {
-      leadId,
-      targetStage: next,
-      reason: "auto-advance",
-      auto: true,
-      createdBy: opts.createdBy ?? null,
-    });
-    if (adv.ok && adv.finalStage) finalStage = adv.finalStage;
+  if (auto) {
+    const next = AUTO_ADVANCE[targetStage];
+    if (next) {
+      const adv = await applyStageTransition(supabase, {
+        leadId,
+        targetStage: next,
+        reason: "auto-advance",
+        auto: true,
+        createdBy: opts.createdBy ?? null,
+      });
+      if (adv.ok && adv.finalStage) finalStage = adv.finalStage;
+    }
   }
 
   return { ok: true, changed: true, fromStage: current, toStage: targetStage, finalStage };

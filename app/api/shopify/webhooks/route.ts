@@ -62,8 +62,11 @@ function customerIdCandidates(order: ShopifyOrder): string[] {
 export async function POST(request: NextRequest) {
   const secret = process.env.SHOPIFY_WEBHOOK_SECRET;
   if (!secret) {
-    console.error("[shopify-webhook] SHOPIFY_WEBHOOK_SECRET not configured");
-    return NextResponse.json({ error: "not_configured" }, { status: 500 });
+    // Shopify intentionally not configured yet — no-op gracefully (never 500).
+    // Once SHOPIFY_WEBHOOK_SECRET is set, this route resumes HMAC verification
+    // + topic dispatch with no other change. Always 200 so nothing treats the
+    // missing-config case as a server error.
+    return NextResponse.json({ ok: true, ignored: "shopify_not_configured" });
   }
 
   const raw = await request.text();
