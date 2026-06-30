@@ -10,7 +10,7 @@ Next.js app — it has its own `package.json` and dependencies.
 ### Read (read-only)
 - `list_leads` — filters: `stage` (one of the 8 stages), `search` (matches
   contact_name / company_name / email, case-insensitive), `overdue` (boolean:
-  `next_followup < today` and stage not in `won`/`lost`). Returns up to 100 rows.
+  `next_followup < today` and stage not in `first_paid_order`/`lost`). Returns up to 100 rows.
 - `get_lead` — by `id`; returns the lead plus its 50 most recent activities.
 - `list_activities` — by `lead_id`; most recent `limit` activities (default 50, max 200).
 
@@ -25,8 +25,9 @@ Next.js app — it has its own `package.json` and dependencies.
 - `set_followup` — `lead_id` + `next_followup` (`YYYY-MM-DD`). Updates the date,
   records a `note` activity.
 
-The 8 valid pipeline stages (exact): `new_lead`, `contacted`, `account_created`,
-`sample_ordered`, `sample_shipped`, `feedback`, `won`, `lost`.
+The 8 valid pipeline stages (exact): `new_lead`, `verification`,
+`first_whatsapp_sent`, `company_created`, `sample_selection`,
+`sample_order_done`, `feedback_pending`, `first_paid_order` — plus `lost`.
 
 ## Authentication
 

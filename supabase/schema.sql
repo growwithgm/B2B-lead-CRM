@@ -21,7 +21,7 @@ create table if not exists leads (
   brand text,
   requested_products text,
   source text default 'klaviyo',
-  stage text not null default 'new_lead',         -- 16 pipeline stages + 'lost' (see lib/stages.ts)
+  stage text not null default 'new_lead',         -- 8 pipeline stages + 'lost' (see lib/stages.ts)
   next_followup date,
   assigned_to uuid references auth.users,
 

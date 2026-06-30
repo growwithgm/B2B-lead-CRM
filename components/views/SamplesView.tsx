@@ -7,15 +7,14 @@ import { initials, qualityStyle, leadDisplayName, colorFor, formatDate } from "@
 import { useLeads } from "./useLeads";
 import LeadDrawer from "../LeadDrawer";
 
-// A "sample" is any lead that has reached the sample-order-created stage or
-// beyond. We surface the sample-tracking fields here.
-const STEPS = ["Ordered", "Shipped", "Delivered", "Feedback"];
+// A "sample" is any lead that has reached the Sample Selection stage or beyond.
+// We surface the sample-tracking fields here.
+const STEPS = ["Selecting", "Ordered", "Feedback"];
 
 function sampleStep(lead: Lead): number {
-  if (isAtOrAfter(lead.stage, "feedback_pending")) return 4;
-  if (isAtOrAfter(lead.stage, "sample_delivered")) return 3;
-  if (isAtOrAfter(lead.stage, "sample_shipped")) return 2;
-  if (isAtOrAfter(lead.stage, "sample_order_created")) return 1;
+  if (isAtOrAfter(lead.stage, "feedback_pending")) return 3;
+  if (isAtOrAfter(lead.stage, "sample_order_done")) return 2;
+  if (isAtOrAfter(lead.stage, "sample_selection")) return 1;
   return 0;
 }
 
@@ -30,7 +29,7 @@ export default function SamplesView({
     useLeads(initialLeads);
 
   const samples = useMemo(
-    () => leads.filter((l) => isAtOrAfter(l.stage, "sample_order_created") && l.stage !== "lost"),
+    () => leads.filter((l) => isAtOrAfter(l.stage, "sample_selection") && l.stage !== "lost"),
     [leads]
   );
 
@@ -38,7 +37,7 @@ export default function SamplesView({
     return (
       <div className="rounded-[16px] border border-line bg-white px-5 py-[54px] text-center shadow-card">
         <div className="text-[15px] font-bold text-[#26302A]">No sample orders yet</div>
-        <div className="mt-1 text-[13px] text-muted">Leads at the Sample Ordered stage and beyond appear here.</div>
+        <div className="mt-1 text-[13px] text-muted">Leads at the Sample Selection stage and beyond appear here.</div>
       </div>
     );
   }

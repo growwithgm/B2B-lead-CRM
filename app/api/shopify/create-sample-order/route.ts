@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createSampleDraftOrder } from "@/lib/shopify";
-import { applyStageTransition } from "@/lib/stage-engine";
 
 export const runtime = "nodejs";
 
@@ -12,8 +11,8 @@ interface LeadRow {
   sample_shopify_order_id: string | null;
 }
 
-// Creates a Shopify SAMPLE order (draft order) for the lead and moves it to
-// Sample Order Created (9) via the engine. Logged-in users only.
+// Creates a Shopify SAMPLE order (draft order) for the lead and saves its id.
+// Fully manual pipeline: this does NOT move the stage. Logged-in users only.
 export async function POST(request: NextRequest) {
   const supabase = createClient();
 
@@ -75,23 +74,14 @@ export async function POST(request: NextRequest) {
     created_by: user.id,
   });
 
-  // Save the order id + move to Sample Order Created (9) via the engine.
-  const transition = await applyStageTransition(supabase, {
-    leadId,
-    targetStage: "sample_order_created",
-    reason: "Shopify sample order created",
-    auto: true,
-    createdBy: user.id,
-    extra: { sample_shopify_order_id: result.orderId },
-  });
+  // Save the order id. No stage change — mark "Sample Order Done" by hand.
+  await supabase
+    .from("leads")
+    .update({ sample_shopify_order_id: result.orderId })
+    .eq("id", leadId);
 
   return NextResponse.json(
-    {
-      ok: true,
-      orderId: result.orderId,
-      name: result.name,
-      stage: transition.finalStage,
-    },
+    { ok: true, orderId: result.orderId, name: result.name },
     { status: 200 }
   );
 }

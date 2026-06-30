@@ -14,45 +14,43 @@ Deploys on **Vercel**.
 
 ## Pipeline stages
 
-16 ordered pipeline stages, plus a terminal off-pipeline `lost`:
+8 ordered pipeline stages, plus a terminal off-pipeline `lost`:
 
-1 `new_lead` · 2 `contact_pending` · 3 `contacted` · 4 `info_required` ·
-5 `qualified` · 6 `shopify_company_pending` · 7 `shopify_company_created` ·
-8 `product_selection_pending` · 9 `sample_order_created` · 10 `sample_shipped` ·
-11 `sample_delivered` · 12 `feedback_pending` · 13 `feedback_received` ·
-14 `b2b_offer_sent` · 15 `first_order_pending` · 16 `converted` — plus `lost`.
+1 `new_lead` · 2 `verification` · 3 `first_whatsapp_sent` · 4 `company_created` ·
+5 `sample_selection` · 6 `sample_order_done` · 7 `feedback_pending` ·
+8 `first_paid_order` — plus `lost`.
 
 These values are the single source of truth in [`lib/stages.ts`](lib/stages.ts)
 and are a hard contract: the DB, UI, transition engine, webhooks, and MCP server
-all depend on them. Each pipeline stage has an order index so transitions can
-compare forward/backward; `lost` is off-pipeline (order 0).
+all depend on them. Each pipeline stage has an order index and a distinct color;
+`lost` is off-pipeline (order 0).
 
-### Stage transitions (auto / manual engine)
+### Stage transitions (fully manual)
 
-Every stage change — drag-drop, the stage dropdown, drawer buttons, Shopify
-routes, and Shopify webhooks — flows through one function,
+The pipeline is **fully manual**. Every stage change — drag-drop on the Kanban
+or the stage dropdown in the lead drawer — flows through one function,
 `applyStageTransition` in [`lib/stage-engine.ts`](lib/stage-engine.ts):
 
-- **Forward-only for AUTO** moves; manual moves may go anywhere (incl. backward
-  or to `lost`).
-- **`lost` is never overridden automatically.**
-- **Idempotent**: an auto move to a stage we're already at/after is a no-op
-  (webhooks can fire twice).
-- Every real change logs a `stage_change` activity (old → new, auto/manual).
-- **Auto-advance** pairs run after any **AUTO** change (Klaviyo intake, Shopify
-  actions/webhooks). **Manual UI moves do not auto-advance**, so a person can land
-  and rest a lead on any of the 16 stages by hand (drag-drop / stage dropdown):
-  `new_lead → contact_pending`, `qualified → shopify_company_pending`,
-  `shopify_company_created → product_selection_pending`,
-  `sample_delivered → feedback_pending`.
+- **A stage only ever changes because a person did it.** There is **no
+  auto-advance** of any kind — the lead rests exactly where you put it.
+- Manual moves may go anywhere (forward, backward, or to `lost`).
+- Idempotent: moving to the stage a lead is already on is a no-op.
+- Every real change logs a `stage_change` activity (old → new).
 
-**Manual** stages (set by a person): `contacted`, `info_required`, `qualified`,
-`sample_delivered`, `feedback_received`, `b2b_offer_sent`, `first_order_pending`,
-`lost`. **Action/webhook-driven AUTO** stages: `shopify_company_created` (create
-customer), `sample_order_created` (create sample order), `sample_shipped`
-(fulfillment webhook), `converted` (order-paid webhook), plus the auto-advance
-pending stages above. UI changes call `POST /api/leads/transition`; the Klaviyo
-webhook auto-advances new leads to `contact_pending`.
+UI changes call `POST /api/leads/transition` (logged-in users only). The Klaviyo
+webhook simply creates new leads at `new_lead` — it no longer advances them.
+There are **no Shopify-driven stage transitions** anymore (creating a Shopify
+customer / sample order saves the relevant ids but does not move the stage; the
+Shopify webhook endpoint verifies + acknowledges only).
+
+### Undo a stage change
+
+Marking a stage is one click/drag. **Undoing** is deliberately separate so it
+can't happen by accident: the lead drawer has its own **"Undo a stage change"**
+control (away from the stage dropdown) that is a 2-step action — pick which
+logged change to undo, then confirm. Undo reverts the lead to the stage it was
+in *before* that change (via `POST /api/leads/undo`) and logs a `stage_undo`
+activity. See [`components/UndoControl.tsx`](components/UndoControl.tsx).
 
 ---
 
@@ -75,9 +73,10 @@ A persistent sidebar + header shell wraps every authenticated view:
 - **Settings** (`/settings`) — workspace, notification toggles, integration
   status, and the 8 pipeline stages.
 - **Lead drawer** (click any lead) — tabbed **Details / Activity timeline**.
-  Edit all fields, change stage, the two quick buttons (**Mark Sample Sent** →
-  Sample Shipped, **Mark Feedback Received** → Feedback), **Send WhatsApp**, and
-  the **Shopify** create-customer / sync-orders actions.
+  Edit all fields, set any of the 8 stages by hand (dropdown), **Undo a stage
+  change** (a deliberate 2-step control), and the **Shopify** create-customer /
+  sample-order / sync-orders actions. (The **Send WhatsApp** button is hidden by
+  default — see §3 to re-enable.)
 - **Login** (`/login`) and **Add lead** (`/leads/new`).
 - **Klaviyo webhook** (`POST /api/klaviyo-webhook`) — unchanged, secret-protected.
 
@@ -123,14 +122,24 @@ npm run dev                  # http://localhost:3000
    [`0001_design_shopify_whatsapp.sql`](supabase/migrations/0001_design_shopify_whatsapp.sql)
    (design + Shopify columns), then
    [`0002_sixteen_stages.sql`](supabase/migrations/0002_sixteen_stages.sql)
-   (remaps the old 8 stages to the new 16 and adds `sample_shopify_order_id` /
-   `converted_order_id`). All are safe to re-run.
+   (adds `sample_shopify_order_id` / `converted_order_id`), then
+   [`0003_eight_stages.sql`](supabase/migrations/0003_eight_stages.sql)
+   (**simplifies the pipeline to the current 8 stages** + `lost`, remapping every
+   existing lead). All are idempotent / safe to re-run.
 3. Invite owners: **Authentication → Users → Add user**. Email/password sign-in
    must be enabled under **Authentication → Providers → Email**.
 
 ---
 
 ## 3. WhatsApp (manual send)
+
+> **The Send WhatsApp button is hidden in the UI by default.** All the code stays
+> wired (`lib/whatsapp.ts`, `/api/whatsapp/send`, the wasify adapter, the env
+> vars) — only the entry point is hidden. **To turn it back on, set
+> `WHATSAPP_UI_ENABLED = true` at the top of
+> [`components/LeadDrawer.tsx`](components/LeadDrawer.tsx)** (one line) and
+> redeploy. That re-shows the drawer's **Send WhatsApp** button + composer and the
+> footer **Message lead** button.
 
 The drawer's **Send WhatsApp** composer offers 3 editable templates and posts to
 `POST /api/whatsapp/send` (logged-in users only — the token never reaches the
@@ -149,37 +158,25 @@ this app.
 
 ## 4. Shopify (customers, sample orders, webhooks)
 
-Server routes (logged-in only), using the Shopify Admin **GraphQL** API. Each
-also drives the pipeline through the transition engine:
+Server routes (logged-in only), using the Shopify Admin **GraphQL** API. These
+are optional helpers — the pipeline is **fully manual**, so **none of them move a
+lead's stage** (mark stages by hand in the drawer):
 
-- `POST /api/shopify/create-customer` — create-or-find a customer, save
-  `shopify_customer_id`, then AUTO → `shopify_company_created` (engine
-  auto-advances to `product_selection_pending`).
+- `POST /api/shopify/create-customer` — create-or-find a customer and save
+  `shopify_customer_id`.
 - `POST /api/shopify/create-sample-order` — create a Shopify sample order (draft
-  order), save its id to `sample_shopify_order_id`, then AUTO →
-  `sample_order_created`.
-- `POST /api/shopify/sync-orders` — read the customer's orders, store
-  `last_order_total` / `last_order_at`; if ≥1 paid order, offer to mark the lead
-  **converted**.
+  order) and save its id to `sample_shopify_order_id`.
+- `POST /api/shopify/sync-orders` — read the customer's orders and store
+  `last_order_total` / `last_order_at` (reports paid count; mark **First Paid
+  Order** by hand).
 
-### Webhooks (full auto)
+### Webhooks (receive-only)
 
 `POST /api/shopify/webhooks` verifies the Shopify **HMAC** (raw body, header
-`X-Shopify-Hmac-Sha256`, secret `SHOPIFY_WEBHOOK_SECRET`) and dispatches by the
-`X-Shopify-Topic` header. It always returns 200 on a valid request and is
-idempotent + forward-only via the engine:
-
-- **`orders/fulfilled`** → the lead whose `sample_shopify_order_id` matches the
-  order → `sample_shipped`.
-- **`orders/paid`** → lead by `shopify_customer_id`; if the paid order is **not**
-  the sample order → `converted` (saves `converted_order_id`, `last_order_total`,
-  `last_order_at`). If it *is* the sample order, it's ignored.
-
-> The webhook path is excluded from auth middleware (like the Klaviyo webhook).
-> Order-id matching is tolerant (GID / numeric id / name). If you use the draft
-> sample-order flow, set the lead's `sample_shopify_order_id` to the real
-> fulfilled order's id (or extend the flow to complete the draft) so fulfillment
-> matching lands.
+`X-Shopify-Hmac-Sha256`, secret `SHOPIFY_WEBHOOK_SECRET`) and always returns 200
+on a valid request. Because the pipeline is manual, it **does not move any
+stage** — it just acknowledges. (When `SHOPIFY_WEBHOOK_SECRET` is unset it
+no-ops gracefully.)
 
 **Register the webhooks** (set the Shopify env vars first):
 
@@ -211,7 +208,7 @@ A self-contained TypeScript MCP server lives in [`mcp/`](mcp/) and exposes the
 CRM to Claude over stdio. **Read** tools: `list_leads`, `get_lead`,
 `list_activities`. **Write** tools (guarded; each also logs an activity):
 `create_lead`, `update_lead_stage`, `add_activity`, `set_followup`. Writes never
-delete data and stage values are validated against the 16 stages (+ `lost`).
+delete data and stage values are validated against the 8 stages (+ `lost`).
 Every tool requires the `MCP_API_KEY`. See [`mcp/README.md`](mcp/README.md) for build/run
 and Claude config. It has its **own** `package.json` and is excluded from the
 Next.js build.

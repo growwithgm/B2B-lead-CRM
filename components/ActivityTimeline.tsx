@@ -8,6 +8,7 @@ import { formatDateTime } from "@/lib/design";
 const TYPE_LABELS: Record<ActivityType, string> = {
   note: "Note",
   stage_change: "Stage change",
+  stage_undo: "Undo",
   sample_sent: "Sample sent",
   feedback: "Feedback",
   email: "Email",
@@ -19,6 +20,7 @@ const TYPE_LABELS: Record<ActivityType, string> = {
 const TYPE_STYLES: Record<ActivityType, string> = {
   note: "bg-neutral-100 text-neutral-600",
   stage_change: "bg-blue-50 text-blue-600",
+  stage_undo: "bg-orange-50 text-orange-700",
   sample_sent: "bg-amber-50 text-amber-700",
   feedback: "bg-purple-50 text-purple-700",
   email: "bg-neutral-100 text-neutral-600",

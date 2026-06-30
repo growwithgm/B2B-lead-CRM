@@ -65,6 +65,7 @@ export type Lead = {
 export type ActivityType =
   | "note"
   | "stage_change"
+  | "stage_undo"
   | "sample_sent"
   | "feedback"
   | "email"

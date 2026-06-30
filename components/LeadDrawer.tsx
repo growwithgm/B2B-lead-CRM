@@ -26,6 +26,13 @@ import {
 } from "@/lib/design";
 import { IconClose, IconWhatsApp, IconShopping, IconStar } from "./shell/icons";
 import ActivityTimeline from "./ActivityTimeline";
+import UndoControl from "./UndoControl";
+
+// Flip to `true` to re-enable the WhatsApp send UI (the drawer button + composer
+// and the footer "Message lead" button). The underlying code stays fully wired
+// (lib/whatsapp.ts, /api/whatsapp/send, the wasify adapter, and the env vars) —
+// this only controls whether the send UI is shown. See README §3.
+const WHATSAPP_UI_ENABLED: boolean = false;
 
 type FormState = {
   contact_name: string;
@@ -184,8 +191,9 @@ export default function LeadDrawer({
     setMessage("Saved.");
   }
 
-  // All stage changes flow through the engine route so auto-advance + logging
-  // rules apply uniformly. The response reflects any auto-advance hop.
+  // All stage changes flow through the engine route so logging is uniform. The
+  // pipeline is fully manual — the lead rests exactly on the chosen stage (no
+  // auto-advance); the response just reflects the manual move.
   async function changeStage(newStage: Stage, reason?: string) {
     if (busyStage) return;
     setBusyStage(true);
@@ -328,15 +336,10 @@ export default function LeadDrawer({
           last_order_total: json.totalSpent ?? lead.last_order_total,
           last_order_at: json.lastOrderAt ?? lead.last_order_at,
         });
-        if (json.canMarkWon && lead.stage !== "converted") {
-          if (confirm(`This customer has ${json.paidCount} paid order(s). Mark lead as Won?`)) {
-            await changeStage("converted", "Paid Shopify order found");
-          } else {
-            setMessage(`Synced: ${json.orderCount} order(s), total ${json.totalSpent}.`);
-          }
-        } else {
-          setMessage(`Synced: ${json.orderCount} order(s), total ${json.totalSpent}.`);
-        }
+        // Fully manual pipeline: report the sync; mark "First Paid Order" by hand.
+        setMessage(
+          `Synced: ${json.orderCount} order(s), ${json.paidCount} paid, total ${json.totalSpent}.`
+        );
       } else {
         setMessage(`Sync failed: ${json.error ?? "error"}`);
       }
@@ -490,35 +493,28 @@ export default function LeadDrawer({
                   ))}
                 </select>
 
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    onClick={() => changeStage("sample_shipped", "Marked sample sent")}
-                    disabled={busyStage}
-                    className="rounded-[10px] border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm font-semibold text-amber-800 transition hover:bg-amber-100 disabled:opacity-60"
-                  >
-                    Mark Sample Sent
-                  </button>
-                  <button
-                    onClick={() => changeStage("feedback_received", "Marked feedback received")}
-                    disabled={busyStage}
-                    className="rounded-[10px] border border-purple-300 bg-purple-50 px-3 py-1.5 text-sm font-semibold text-purple-800 transition hover:bg-purple-100 disabled:opacity-60"
-                  >
-                    Mark Feedback Received
-                  </button>
-                  <button
-                    onClick={() => {
-                      setWaBody(templates[0].body);
-                      setWaOpen(true);
-                    }}
-                    className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#BBE3CC] bg-[#E3F3EA] px-3 py-1.5 text-sm font-semibold text-[#1F8A5B] transition hover:bg-[#D5ECdf]"
-                  >
-                    <IconWhatsApp size={15} /> Send WhatsApp
-                  </button>
-                </div>
+                <p className="mt-2 text-[11.5px] text-muted">
+                  Set any of the 8 stages by hand here or by dragging the card on the board. The
+                  lead rests exactly where you put it.
+                </p>
+
+                {WHATSAPP_UI_ENABLED && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => {
+                        setWaBody(templates[0].body);
+                        setWaOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-[10px] border border-[#BBE3CC] bg-[#E3F3EA] px-3 py-1.5 text-sm font-semibold text-[#1F8A5B] transition hover:bg-[#D5ECdf]"
+                    >
+                      <IconWhatsApp size={15} /> Send WhatsApp
+                    </button>
+                  </div>
+                )}
               </Section>
 
-              {/* WhatsApp composer */}
-              {waOpen && (
+              {/* WhatsApp composer (hidden behind WHATSAPP_UI_ENABLED) */}
+              {WHATSAPP_UI_ENABLED && waOpen && (
                 <div className="mb-3.5 animate-pop rounded-[14px] border border-[#BBE3CC] bg-white p-4">
                   <div className="mb-2 flex items-center justify-between">
                     <span className="text-[13px] font-extrabold text-ink">Send WhatsApp</span>
@@ -718,6 +714,15 @@ export default function LeadDrawer({
                 </Section>
               )}
 
+              {/* Separate, deliberate Undo control (away from the stage controls). */}
+              <UndoControl
+                lead={lead}
+                onUndone={(l) => {
+                  onUpdated(l);
+                  setRefreshKey((k) => k + 1);
+                }}
+              />
+
               <div className="mt-2 border-t border-line pt-4">
                 <button
                   onClick={handleDelete}
@@ -734,19 +739,24 @@ export default function LeadDrawer({
 
         {/* Footer */}
         <div className="flex flex-shrink-0 gap-2.5 border-t border-line bg-white px-[22px] py-3.5">
-          <button
-            onClick={() => {
-              setTab("details");
-              setWaBody(templates[0].body);
-              setWaOpen(true);
-            }}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-[10px] bg-brand py-2.5 text-[13.5px] font-bold text-white shadow-[0_2px_6px_rgba(14,123,87,.28)] transition hover:bg-brand-dark"
-          >
-            <IconWhatsApp size={16} /> Message lead
-          </button>
+          {WHATSAPP_UI_ENABLED && (
+            <button
+              onClick={() => {
+                setTab("details");
+                setWaBody(templates[0].body);
+                setWaOpen(true);
+              }}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-[10px] bg-brand py-2.5 text-[13.5px] font-bold text-white shadow-[0_2px_6px_rgba(14,123,87,.28)] transition hover:bg-brand-dark"
+            >
+              <IconWhatsApp size={16} /> Message lead
+            </button>
+          )}
           <button
             onClick={onClose}
-            className="rounded-[10px] border border-line bg-white px-[18px] py-2.5 text-[13.5px] font-bold text-muted-soft transition hover:bg-[#F4F4EF]"
+            className={cx(
+              "rounded-[10px] border border-line bg-white py-2.5 text-[13.5px] font-bold text-muted-soft transition hover:bg-[#F4F4EF]",
+              WHATSAPP_UI_ENABLED ? "px-[18px]" : "flex-1"
+            )}
           >
             Close
           </button>

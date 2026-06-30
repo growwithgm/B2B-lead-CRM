@@ -1,28 +1,18 @@
 // Stage transition engine — the single chokepoint every stage change flows
-// through (drag-drop, the stage dropdown, drawer buttons, Shopify routes, and
-// Shopify webhooks). Centralizes the auto/manual rules so they can't drift.
+// through (drag-drop and the stage dropdown in the lead drawer). Centralizes
+// the logging rule so it can't drift.
 //
-// Rules:
-//  - Forward-only for AUTO transitions: an auto move never goes to an earlier
-//    stage. Manual moves may go anywhere (including backward or to `lost`).
-//  - `lost` is never overridden automatically.
-//  - Idempotent: an auto move to a stage we're already at/after is a no-op
-//    (webhooks can fire more than once).
+// Rules (this pipeline is FULLY MANUAL — there is no auto-advance):
+//  - A stage only ever changes because a person did it (drag-drop / dropdown).
+//    The lead rests exactly where it is put — the engine NEVER advances a stage
+//    on its own.
+//  - `auto` is accepted for compatibility but no longer triggers any advance;
+//    when true it only adds a forward-only / never-override-`lost` guard.
+//  - Idempotent: moving to the stage we're already on is a no-op.
 //  - Every real change logs a `stage_change` activity (old → new, auto/manual).
-//  - After a successful AUTO change, "pending" stages auto-advance one step.
-//    Manual moves do NOT auto-advance, so a person can rest a lead on any of
-//    the 16 stages by hand (drag-drop / stage dropdown).
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { STAGE_LABELS, isStage, isAtOrAfter, stageLabel, type Stage } from "./stages";
-
-// "Set X → system immediately advances to its pending stage."
-const AUTO_ADVANCE: Partial<Record<Stage, Stage>> = {
-  new_lead: "contact_pending",
-  qualified: "shopify_company_pending",
-  shopify_company_created: "product_selection_pending",
-  sample_delivered: "feedback_pending",
-};
 
 export type TransitionResult = {
   ok: boolean;
@@ -40,7 +30,7 @@ export type TransitionOptions = {
   auto: boolean;
   createdBy?: string | null;
   // Extra column writes applied alongside the stage change (e.g. order ids).
-  // Persisted even on an idempotent no-op so webhook/route metadata is saved.
+  // Persisted even on an idempotent no-op so route metadata is saved.
   extra?: Record<string, unknown>;
 };
 
@@ -80,13 +70,13 @@ export async function applyStageTransition(
     return { ok: true, changed: false, fromStage: current, toStage: targetStage, finalStage: current };
   }
 
-  // Auto guard rails.
+  // Auto guard rails (kept for compatibility; manual UI moves pass auto:false
+  // and may go anywhere — backward or to `lost`).
   if (auto) {
     if (current === "lost") {
       return { ok: true, changed: false, fromStage: current, toStage: targetStage, finalStage: current };
     }
     if (isAtOrAfter(current, targetStage)) {
-      // Forward-only + idempotent.
       return { ok: true, changed: false, fromStage: current, toStage: targetStage, finalStage: current };
     }
   }
@@ -98,7 +88,7 @@ export async function applyStageTransition(
     .eq("id", leadId);
   if (updErr) return { ok: false, changed: false, error: updErr.message };
 
-  // Log it.
+  // Log it. No auto-advance: the lead rests exactly on `targetStage`.
   const reasonText = opts.reason ? ` — ${opts.reason}` : "";
   await supabase.from("activities").insert({
     lead_id: leadId,
@@ -107,26 +97,5 @@ export async function applyStageTransition(
     created_by: opts.createdBy ?? null,
   });
 
-  // Auto-advance pending stages — ONLY for AUTO transitions (Klaviyo intake,
-  // Shopify webhooks/actions). Manual UI moves (auto:false) intentionally do not
-  // auto-advance, so a person can land and rest a lead on ANY stage by hand
-  // (including the otherwise Shopify-automatic ones). The advance is itself an
-  // AUTO transition: forward-only, never overrides lost, and cannot loop (no
-  // target is also a key after the first hop).
-  let finalStage: string = targetStage;
-  if (auto) {
-    const next = AUTO_ADVANCE[targetStage];
-    if (next) {
-      const adv = await applyStageTransition(supabase, {
-        leadId,
-        targetStage: next,
-        reason: "auto-advance",
-        auto: true,
-        createdBy: opts.createdBy ?? null,
-      });
-      if (adv.ok && adv.finalStage) finalStage = adv.finalStage;
-    }
-  }
-
-  return { ok: true, changed: true, fromStage: current, toStage: targetStage, finalStage };
+  return { ok: true, changed: true, fromStage: current, toStage: targetStage, finalStage: targetStage };
 }

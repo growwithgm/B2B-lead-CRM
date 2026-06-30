@@ -1,9 +1,12 @@
 /**
  * Registers the Shopify webhooks the CRM needs, via the Admin GraphQL API.
  *
- * Subscribes ORDERS_FULFILLED and ORDERS_PAID to the app's webhook endpoint so
- * the pipeline advances automatically (sample_shipped on fulfillment, converted
- * on a non-sample paid order).
+ * Subscribes ORDERS_FULFILLED and ORDERS_PAID to the app's webhook endpoint.
+ *
+ * NOTE: the pipeline is now FULLY MANUAL. The webhook route
+ * (app/api/shopify/webhooks) verifies the HMAC and acknowledges only — it never
+ * moves a lead's stage. Registering these topics is therefore harmless but no
+ * longer drives the pipeline; kept for reference / future use.
  *
  * Run it once (and again if the URL changes):
  *   npx tsx scripts/register-shopify-webhooks.ts

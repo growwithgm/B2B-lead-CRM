@@ -58,45 +58,29 @@ const supabase: SupabaseClient = createClient(
 
 const STAGES = [
   "new_lead",
-  "contact_pending",
-  "contacted",
-  "info_required",
-  "qualified",
-  "shopify_company_pending",
-  "shopify_company_created",
-  "product_selection_pending",
-  "sample_order_created",
-  "sample_shipped",
-  "sample_delivered",
+  "verification",
+  "first_whatsapp_sent",
+  "company_created",
+  "sample_selection",
+  "sample_order_done",
   "feedback_pending",
-  "feedback_received",
-  "b2b_offer_sent",
-  "first_order_pending",
-  "converted",
+  "first_paid_order",
   "lost",
 ] as const;
 
 const STAGE_LABELS: Record<(typeof STAGES)[number], string> = {
   new_lead: "New Lead",
-  contact_pending: "Contact Pending",
-  contacted: "Contacted",
-  info_required: "Info Required",
-  qualified: "Qualified",
-  shopify_company_pending: "Shopify Company Pending",
-  shopify_company_created: "Shopify Company Created",
-  product_selection_pending: "Product Selection Pending",
-  sample_order_created: "Sample Order Created",
-  sample_shipped: "Sample Shipped",
-  sample_delivered: "Sample Delivered",
+  verification: "Verification",
+  first_whatsapp_sent: "First WhatsApp Sent",
+  company_created: "Company Account Created",
+  sample_selection: "Sample Selection",
+  sample_order_done: "Sample Order Done",
   feedback_pending: "Feedback Pending",
-  feedback_received: "Feedback Received",
-  b2b_offer_sent: "B2B Offer Sent",
-  first_order_pending: "First Order Pending",
-  converted: "Converted",
+  first_paid_order: "First Paid Order",
   lost: "Lost",
 };
 
-const TERMINAL_STAGES = ["converted", "lost"] as const;
+const TERMINAL_STAGES = ["first_paid_order", "lost"] as const;
 
 const ACTIVITY_TYPES = ["note", "email", "call", "whatsapp", "feedback"] as const;
 
@@ -181,7 +165,7 @@ server.registerTool(
       "search across contact_name/company_name/email, and/or overdue follow-ups.",
     inputSchema: {
       api_key: apiKeySchema,
-      stage: stageSchema.optional().describe("Filter by one of the 16 pipeline stages (or 'lost')."),
+      stage: stageSchema.optional().describe("Filter by one of the 8 pipeline stages (or 'lost')."),
       search: z
         .string()
         .optional()
@@ -189,7 +173,7 @@ server.registerTool(
       overdue: z
         .boolean()
         .optional()
-        .describe("If true, only leads with next_followup < today and stage not converted/lost."),
+        .describe("If true, only leads with next_followup < today and stage not first_paid_order/lost."),
     },
   },
   async ({ api_key, stage, search, overdue }) => {
@@ -361,11 +345,11 @@ server.registerTool(
   {
     title: "Update lead stage",
     description:
-      "Guarded write. Move a lead to one of the 16 valid stages (or 'lost') and record a 'stage_change' activity.",
+      "Guarded write. Move a lead to one of the 8 valid stages (or 'lost') and record a 'stage_change' activity.",
     inputSchema: {
       api_key: apiKeySchema,
       lead_id: z.string().uuid().describe("Lead id (uuid)."),
-      stage: stageSchema.describe("Target stage (must be one of the 16 valid stages, or 'lost')."),
+      stage: stageSchema.describe("Target stage (must be one of the 8 valid stages, or 'lost')."),
     },
   },
   async ({ api_key, lead_id, stage }) => {

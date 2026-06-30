@@ -57,7 +57,8 @@ export default function PipelineView({
     const toLabel = stageLabel(newStage);
     const previousStage = lead.stage;
 
-    // Optimistic move; the engine response is authoritative (it may auto-advance).
+    // Optimistic move; the engine response is authoritative (it never
+    // auto-advances — the lead rests exactly on the dropped stage).
     setLeads((prev) =>
       prev.map((l) => (l.id === leadId ? { ...l, stage: newStage } : l))
     );

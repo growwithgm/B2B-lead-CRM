@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: result.error }, { status: 400 });
   }
 
-  // Return the fresh row so the client reflects any auto-advance.
+  // Return the fresh row so the client reflects the manual move.
   const { data: lead } = await supabase
     .from("leads")
     .select("*")

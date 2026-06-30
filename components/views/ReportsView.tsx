@@ -9,28 +9,28 @@ export default function ReportsView({ leads }: { leads: Lead[] }) {
   const newWeek = leads.filter(
     (l) => Date.now() - new Date(l.created_at).getTime() < 7 * 864e5
   ).length;
-  const qualified = active.filter((l) => isAtOrAfter(l.stage, "qualified")).length;
+  const qualified = active.filter((l) => isAtOrAfter(l.stage, "company_created")).length;
   const samplesSent = active.filter((l) =>
-    isAtOrAfter(l.stage, "sample_order_created")
+    isAtOrAfter(l.stage, "sample_order_done")
   ).length;
   const feedbackCount = leads.filter((l) => l.feedback_rating != null && l.feedback_rating > 0).length;
-  const won = leads.filter((l) => l.stage === "converted").length;
+  const won = leads.filter((l) => l.stage === "first_paid_order").length;
   const convRate = total ? (won / total) * 100 : 0;
 
   const repStats = [
     { label: "Leads this week", value: String(newWeek), sub: "new" },
-    { label: "Qualified leads", value: String(qualified), sub: "account created+" },
-    { label: "Samples sent", value: String(samplesSent), sub: "in market" },
+    { label: "Accounts created", value: String(qualified), sub: "company created+" },
+    { label: "Samples ordered", value: String(samplesSent), sub: "ordered+" },
     { label: "Feedback received", value: String(feedbackCount), sub: "responses" },
-    { label: "Won", value: String(won), sub: "converted" },
+    { label: "Won", value: String(won), sub: "first paid order" },
     { label: "Conversion rate", value: `${convRate.toFixed(1)}%`, sub: "lead → won" },
   ];
 
   // Funnel by milestone
   const milestones = [
     { label: "Total leads", n: total },
-    { label: "Qualified", n: qualified },
-    { label: "Samples sent", n: samplesSent },
+    { label: "Accounts created", n: qualified },
+    { label: "Samples ordered", n: samplesSent },
     { label: "Feedback", n: feedbackCount },
     { label: "Won", n: won },
   ];
@@ -54,8 +54,8 @@ export default function ReportsView({ leads }: { leads: Lead[] }) {
     const key = l.owner_name || "Unassigned";
     const o = ownerMap.get(key) ?? { leads: 0, samples: 0, won: 0 };
     o.leads += 1;
-    if (isAtOrAfter(l.stage, "sample_order_created") && l.stage !== "lost") o.samples += 1;
-    if (l.stage === "converted") o.won += 1;
+    if (isAtOrAfter(l.stage, "sample_order_done") && l.stage !== "lost") o.samples += 1;
+    if (l.stage === "first_paid_order") o.won += 1;
     ownerMap.set(key, o);
   }
   const owners = Array.from(ownerMap.entries())

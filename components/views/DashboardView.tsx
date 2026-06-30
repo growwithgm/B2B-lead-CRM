@@ -39,14 +39,12 @@ export default function DashboardView({
     const newWeek = leads.filter(
       (l) => Date.now() - new Date(l.created_at).getTime() < 7 * 864e5
     ).length;
-    const qualified = active.filter((l) => isAtOrAfter(l.stage, "qualified")).length;
+    const qualified = active.filter((l) => isAtOrAfter(l.stage, "company_created")).length;
     const samplesSent = active.filter((l) =>
-      isAtOrAfter(l.stage, "sample_order_created")
+      isAtOrAfter(l.stage, "sample_order_done")
     ).length;
-    const feedback = leads.filter(
-      (l) => l.stage === "feedback_pending" || l.stage === "feedback_received"
-    ).length;
-    const won = leads.filter((l) => l.stage === "converted").length;
+    const feedback = leads.filter((l) => l.stage === "feedback_pending").length;
+    const won = leads.filter((l) => l.stage === "first_paid_order").length;
     const overdue = leads.filter(
       (l) => isOverdue(l.next_followup) && !isTerminal(l.stage)
     ).length;
@@ -103,10 +101,10 @@ export default function DashboardView({
   const kpis = [
     { label: "Total Leads", value: stats.total, sub: "all sources" },
     { label: "New This Week", value: stats.newWeek, sub: "last 7 days" },
-    { label: "Qualified", value: stats.qualified, sub: "account created+" },
-    { label: "Samples Sent", value: stats.samplesSent, sub: "in market" },
+    { label: "Accounts", value: stats.qualified, sub: "company created+" },
+    { label: "Samples", value: stats.samplesSent, sub: "ordered+" },
     { label: "Feedback", value: stats.feedback, sub: "awaiting reply" },
-    { label: "Won", value: stats.won, sub: "converted" },
+    { label: "Won", value: stats.won, sub: "first paid order" },
     { label: "Conversion Rate", value: `${stats.convRate.toFixed(1)}%`, sub: "lead → won" },
     { label: "Overdue Follow-ups", value: stats.overdue, sub: "action needed", danger: stats.overdue > 0 },
   ];

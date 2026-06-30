@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { applyStageTransition } from "@/lib/stage-engine";
 
 // Klaviyo lead intake. This is the ONLY route that uses a secret instead of
 // a user session. It is excluded from auth middleware (see middleware matcher).
@@ -137,32 +136,14 @@ export async function POST(request: NextRequest) {
     source: "klaviyo",
   };
 
-  const { data: inserted, error } = await supabase
-    .from("leads")
-    .insert(lead)
-    .select("id")
-    .single();
+  const { error } = await supabase.from("leads").insert(lead).select("id").single();
   if (error) {
     console.error("[klaviyo-webhook] insert failed:", error.message);
     // Still 200 to avoid aggressive Klaviyo retries; investigate via logs.
     return NextResponse.json({ ok: false, error: error.message });
   }
 
-  // Best-effort auto-advance new_lead → contact_pending via the engine.
-  // Never let this affect the webhook response (Klaviyo must get a quick 200).
-  const insertedId = (inserted as { id?: string } | null)?.id;
-  if (insertedId) {
-    try {
-      await applyStageTransition(supabase, {
-        leadId: insertedId,
-        targetStage: "contact_pending",
-        reason: "Auto-advance after Klaviyo capture",
-        auto: true,
-      });
-    } catch (e) {
-      console.error("[klaviyo-webhook] auto-advance failed:", e);
-    }
-  }
-
+  // Fully manual pipeline: new leads rest at `new_lead` until a person moves
+  // them. No auto-advance here.
   return NextResponse.json({ ok: true });
 }

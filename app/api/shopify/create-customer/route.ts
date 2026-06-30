@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createOrFindCustomer } from "@/lib/shopify";
-import { applyStageTransition } from "@/lib/stage-engine";
 
 export const runtime = "nodejs";
 
@@ -133,18 +132,7 @@ export async function POST(request: NextRequest) {
     created_by: user.id,
   });
 
-  // Action-driven AUTO transition: customer exists → Shopify Company Created (7),
-  // which the engine auto-advances to Product Selection Pending (8).
-  const transition = await applyStageTransition(supabase, {
-    leadId,
-    targetStage: "shopify_company_created",
-    reason: "Shopify customer created",
-    auto: true,
-    createdBy: user.id,
-  });
-
-  return NextResponse.json(
-    { ok: true, customerId, created, stage: transition.finalStage },
-    { status: 200 }
-  );
+  // Fully manual pipeline: creating the Shopify customer does NOT move the
+  // stage. Mark "Company Account Created" by hand when ready.
+  return NextResponse.json({ ok: true, customerId, created }, { status: 200 });
 }
